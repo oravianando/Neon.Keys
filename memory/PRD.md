@@ -4,50 +4,23 @@
 Create a piano app, extract MIDI from a song, add song upload option, show rolling notes above piano, add playback speed, add play/pause, add settings for piano.
 
 ## User Choices
-- Theme: dark neon (Electric & Neon archetype — Void black + Cyan/Pink glow)
-- Song format: MIDI upload (with placeholder for MP3/WAV → MIDI in v2)
-- Piano sound: Tone.js Sampler with Salamander piano samples
-- Persistence: backend (FastAPI + MongoDB) for uploaded songs & settings
+- Theme: dark neon
+- MIDI upload + **Audio → MIDI conversion via Spotify Basic Pitch (client-side TFJS)**
+- Piano sound: Tone.js Salamander sampler
+- Persistence: FastAPI + MongoDB
 
 ## Architecture
 ### Backend (FastAPI + MongoDB)
-- `GET /api/demo-songs` — 5 built-in songs (Twinkle Twinkle, Ode to Joy, Für Elise, Happy Birthday, Canon in D)
-- `GET/POST/DELETE /api/songs` — user uploaded songs CRUD
-- `GET/PUT /api/settings` — persist global user settings (volume, speed, colors, labels, sustain, lookahead)
+- `GET /api/demo-songs`, `GET/POST/DELETE /api/songs`, `GET/PUT /api/settings`
 
-### Frontend (React + Tone.js + @tonejs/midi)
-- `PianoApp.jsx` — main container, state, data fetching
-- `PianoKeyboard.jsx` — 88-key visual + interactive piano
-- `RollingNotes.jsx` — Canvas-based falling-notes visualization with neon glow
-- `TransportControls.jsx` — play/pause/stop, progress bar, speed slider
-- `SongLibrary.jsx` — song list + upload zone
-- `SettingsPanel.jsx` — Sheet with volume, colors, toggles, lookahead
-- `usePianoEngine.js` — Tone.Sampler, playback scheduler, activeKeys state
+### Frontend
+- `PianoApp.jsx`, `PianoKeyboard.jsx`, `RollingNotes.jsx`, `TransportControls.jsx`, `SongLibrary.jsx`, `SettingsPanel.jsx`, `usePianoEngine.js`, `lib/midiParse.js`, `lib/audioToMidi.js`, `public/basic-pitch-model/` (TFJS model files)
 
-## Implemented (2026-02-08)
-- 88-key interactive piano with black/white key rendering + click-to-play
-- Real piano samples via Salamander (Tone.Sampler)
-- MIDI file upload → parsed with @tonejs/midi → saved to backend
-- 5 demo songs pre-populated on backend
-- Rolling notes canvas synced to key positions, glow effects, per-note colors
-- Play / Pause / Stop / Speed (0.25x–2x) / Seek via progress bar
-- Settings sheet: volume, note fall time (lookahead), 4 note-color themes, labels toggle, sustain toggle
-- Settings persist to backend (500ms debounced PUT)
-- Dark neon design system: Unbounded + JetBrains Mono, cyan/pink/purple glow
-- Toast notifications (sonner)
-- All interactive elements have `data-testid`
+## Implemented
+- 2026-02-08 v1: 88-key piano, Tone.js Salamander sampler, MIDI upload (@tonejs/midi), 5 demo songs, rolling notes canvas, play/pause/stop, seek, speed (0.25x-2x), settings sheet (volume/colors/labels/sustain/lookahead) with backend persist, dark-neon design
+- 2026-02-08 v2: **Audio → MIDI conversion (Spotify Basic Pitch client-side)** — .mp3/.wav/.ogg/.m4a/.flac supported; realtime progress UI (decoding → detecting pitches → building MIDI); model files served from `/basic-pitch-model/`; unified upload handler in SongLibrary
 
-## P1 Backlog
-- MP3/WAV → MIDI conversion (Basic Pitch by Spotify, or paid Klangio API)
-- Practice mode (wait for user to hit correct key)
-- Recording user piano input as MIDI
-- Loop / A-B repeat markers
-- Metronome
-- Multi-track color coding for MIDI songs with multiple instruments
-- Computer-keyboard-to-piano key mapping (typing letters plays notes)
-
-## P2 Backlog
-- Sharing songs via URL
-- Sheet-music export
-- MIDI keyboard input (Web MIDI API)
-- User accounts + song favorites
+## Backlog
+- P1: Practice mode (wait for correct key), computer keyboard → piano mapping, Web MIDI API for hardware
+- P1: Basic Pitch tuning parameters exposed in settings (onset/frame thresholds, min note length)
+- P2: Sharing songs via URL, sheet-music export, user accounts, multi-track color coding
