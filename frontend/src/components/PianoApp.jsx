@@ -8,6 +8,7 @@ import SongLibrary from "@/components/SongLibrary";
 import SettingsPanel from "@/components/SettingsPanel";
 import { usePianoEngine } from "@/hooks/usePianoEngine";
 import { parseMidiFile } from "@/lib/midiParse";
+import { convertAudioToMidi } from "@/lib/audioToMidi";
 import { toast } from "sonner";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -27,6 +28,7 @@ export default function PianoApp() {
   const [currentSong, setCurrentSong] = useState(null);
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [keyRects, setKeyRects] = useState({});
+  const [converting, setConverting] = useState(null);
   const keyElsRef = useRef({});
   const boardWrapRef = useRef(null);
 
@@ -112,9 +114,38 @@ export default function PianoApp() {
   );
 
   const handleUpload = useCallback(
-    async (file) => {
-      const parsed = await parseMidiFile(file);
-      // Save to backend
+    async (file, isAudio) => {
+      let parsed;
+      if (isAudio) {
+        setConverting({ stage: "Decoding audio", percent: 0 });
+        try {
+          parsed = await convertAudioToMidi(file, (stage, percent) => {
+            const label = {
+              decoding: "Decoding audio",
+              analyzing: "Detecting pitches",
+              converting: "Building MIDI",
+              done: "Done",
+            }[stage] || stage;
+            setConverting({ stage: label, percent });
+          });
+          if (parsed.notes.length === 0) {
+            toast.warning("No notes detected. Try a clearer melodic recording.");
+          } else {
+            toast.success(`Converted ${parsed.notes.length} notes from audio`);
+          }
+        } catch (err) {
+          console.error("Audio conversion failed", err);
+          toast.error("Audio conversion failed. Try a shorter or clearer file.");
+          setConverting(null);
+          throw err;
+        } finally {
+          setConverting(null);
+        }
+      } else {
+        parsed = await parseMidiFile(file);
+        toast.success(`Loaded "${file.name}"`);
+      }
+
       try {
         const res = await axios.post(`${API}/songs`, {
           name: parsed.name,
@@ -195,6 +226,7 @@ export default function PianoApp() {
             onSelect={handleSelectSong}
             onUpload={handleUpload}
             onDelete={handleDelete}
+            converting={converting}
           />
         </aside>
 

@@ -1,5 +1,5 @@
 import React, { useRef } from "react";
-import { Upload, Music2, Sparkles, Trash2 } from "lucide-react";
+import { Upload, Music2, Sparkles, Trash2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
 export default function SongLibrary({
@@ -9,6 +9,7 @@ export default function SongLibrary({
   onSelect,
   onUpload,
   onDelete,
+  converting,
 }) {
   const inputRef = useRef(null);
 
@@ -16,21 +17,18 @@ export default function SongLibrary({
     const file = e.target.files?.[0];
     if (!file) return;
     const ext = file.name.split(".").pop().toLowerCase();
-    if (ext === "mp3" || ext === "wav") {
-      toast.info("Audio → MIDI conversion is coming soon. Please upload a .mid file for now.", { duration: 4500 });
-      e.target.value = "";
-      return;
-    }
-    if (ext !== "mid" && ext !== "midi") {
-      toast.error("Unsupported file. Please upload .mid or .midi", { duration: 4000 });
+    const isAudio = ["mp3", "wav", "ogg", "m4a", "flac"].includes(ext);
+    const isMidi = ext === "mid" || ext === "midi";
+    if (!isAudio && !isMidi) {
+      toast.error("Unsupported file. Use .mid, .midi, .mp3, .wav, .ogg, .m4a, or .flac", { duration: 4000 });
       e.target.value = "";
       return;
     }
     try {
-      await onUpload(file);
-      toast.success(`Loaded "${file.name}"`);
+      await onUpload(file, isAudio);
     } catch (err) {
-      toast.error("Failed to parse MIDI file.");
+      console.error(err);
+      toast.error(`Failed to import: ${err.message || err}`);
     }
     e.target.value = "";
   };
@@ -44,21 +42,37 @@ export default function SongLibrary({
         </div>
         <button
           onClick={() => inputRef.current?.click()}
-          className="flex items-center gap-2 px-3 py-2 border border-[#00F0FF] text-[#00F0FF] rounded-lg hover:bg-[#00F0FF] hover:text-black transition-all text-xs uppercase tracking-wider"
+          disabled={!!converting}
+          className="flex items-center gap-2 px-3 py-2 border border-[#00F0FF] text-[#00F0FF] rounded-lg hover:bg-[#00F0FF] hover:text-black transition-all text-xs uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed"
           data-testid="upload-button"
         >
-          <Upload size={14} />
-          Upload
+          {converting ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
+          {converting ? "Working" : "Upload"}
         </button>
         <input
           ref={inputRef}
           type="file"
-          accept=".mid,.midi,.mp3,.wav"
+          accept=".mid,.midi,.mp3,.wav,.ogg,.m4a,.flac"
           className="hidden"
           onChange={handleFile}
           data-testid="upload-input"
         />
       </div>
+
+      {converting && (
+        <div className="glass rounded-lg px-3 py-2.5 border border-[#00F0FF]/40" data-testid="conversion-progress">
+          <div className="flex items-center justify-between text-[10px] uppercase tracking-wider text-white/70 mb-1.5">
+            <span>{converting.stage}</span>
+            <span className="neon-cyan font-mono">{converting.percent}%</span>
+          </div>
+          <div className="h-1 rounded-full bg-white/10 overflow-hidden">
+            <div
+              className="h-full bg-gradient-to-r from-[#00F0FF] to-[#7000FF] transition-all duration-200"
+              style={{ width: `${converting.percent}%` }}
+            />
+          </div>
+        </div>
+      )}
 
       <div className="flex-1 overflow-y-auto piano-scroll pr-1 space-y-4">
         {userSongs.length > 0 && (

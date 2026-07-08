@@ -1,0 +1,25 @@
+{
+  "summary": "Audio→MIDI conversion via Spotify Basic Pitch (TFJS) verified end-to-end. Model files serve correctly; WAV upload triggers conversion progress UI, produces notes, persists via POST /api/songs, auto-selects the new song, and playback works. Unsupported extensions are rejected with a toast.",
+  "tested_scope": ["frontend", "backend", "integration"],
+  "passed": [
+    "GET /basic-pitch-model/model.json returns 200 with valid TFJS graph-model JSON",
+    "GET /basic-pitch-model/group1-shard1of1.bin returns 200 (742,392 bytes)",
+    "GET /api/songs returns 200 with song list",
+    "upload-input accepts .mp3/.wav/.ogg/.m4a/.flac/.mid/.midi (accept attribute confirmed)",
+    "Unsupported .txt file shows 'Unsupported file' toast and does not initiate conversion",
+    "Uploading /tmp/test_melody.wav shows conversion-progress element with stage ('DETECTING PITCHES') and percent",
+    "upload-button becomes disabled and displays 'Working' with spinner during conversion",
+    "Conversion completed within ~30s; progress bar detached after completion",
+    "POST /api/songs returned 200; new song persisted to backend",
+    "New song 'test_melody' (4s, 6 notes) appears at top of Uploaded section and is auto-selected as current",
+    "Play button starts playback (transport advances to 0:03); rolling notes area + piano keyboard render",
+    "Success toast 'Converted 6 notes from audio' displayed",
+    "Zero console errors during entire flow"
+  ],
+  "failed": [],
+  "action_items": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "retest_needed": false,
+  "full_testing_deferred": true,
+  "notes": "MIDI file upload regression path and demo song play/pause/stop/speed regressions were not explicitly re-executed in this iteration but share the same code paths (parseMidiFile + engine.play/pause/stop). Play button was clicked on the newly-converted audio-derived song and worked without errors, exercising the shared engine."
+}
