@@ -1,26 +1,26 @@
 // 20 VFX presets combining background, note, particle, and key effects.
-// Extended properties: trails, chromaDepth (0..1), zoomOnBeat (0..1)
+// Extended properties: trails, chromaDepth (0..1), pulseGlow (0..1), aurora bloom
 export const VFX_PRESETS = [
-  { id: "neon-cyan",     label: "Neon Cyan",       bg: "grid",      note: "glow",     particle: "burst",   keyFx: "glow",   chromatic: false, beatShake: 0.0,  palette: ["#00F0FF", "#FF003C"], trails: false, chromaDepth: 0.0, zoomOnBeat: 0.0 },
-  { id: "neon-pink",     label: "Neon Pink",       bg: "grid",      note: "glow",     particle: "burst",   keyFx: "glow",   chromatic: false, beatShake: 0.0,  palette: ["#FF00E6", "#00F0FF"], trails: true,  chromaDepth: 0.0, zoomOnBeat: 0.15 },
-  { id: "aurora",        label: "Aurora Waves",    bg: "aurora",    note: "gradient", particle: "ring",    keyFx: "pulse",  chromatic: false, beatShake: 0.1,  palette: ["#7CFF9A", "#00F0FF"], trails: true,  chromaDepth: 0.0, zoomOnBeat: 0.1  },
-  { id: "vaporwave",     label: "Vaporwave",       bg: "vapor",     note: "gradient", particle: "sparks",  keyFx: "pulse",  chromatic: true,  beatShake: 0.15, palette: ["#FF71CE", "#01CDFE"], trails: false, chromaDepth: 0.6, zoomOnBeat: 0.2  },
-  { id: "matrix",        label: "Matrix Rain",     bg: "matrix",    note: "solid",    particle: "sparks",  keyFx: "glow",   chromatic: false, beatShake: 0.0,  palette: ["#00FF41", "#88FF88"], trails: true,  chromaDepth: 0.0, zoomOnBeat: 0.0  },
-  { id: "starfield",     label: "Starfield",       bg: "starfield", note: "glow",     particle: "burst",   keyFx: "pulse",  chromatic: false, beatShake: 0.1,  palette: ["#FFFFFF", "#FFD700"], trails: true,  chromaDepth: 0.0, zoomOnBeat: 0.2  },
-  { id: "sunset",        label: "Sunset",          bg: "sunset",    note: "gradient", particle: "burst",   keyFx: "glow",   chromatic: false, beatShake: 0.1,  palette: ["#FF6B6B", "#FFD93D"], trails: false, chromaDepth: 0.0, zoomOnBeat: 0.0  },
-  { id: "cyberpunk",     label: "Cyberpunk",       bg: "grid",      note: "solid",    particle: "burst",   keyFx: "glow",   chromatic: true,  beatShake: 0.3,  palette: ["#FF0080", "#00FFFF"], trails: false, chromaDepth: 0.9, zoomOnBeat: 0.35 },
-  { id: "fire",          label: "Fire",            bg: "sunset",    note: "glow",     particle: "sparks",  keyFx: "glow",   chromatic: false, beatShake: 0.25, palette: ["#FF3D00", "#FFC107"], trails: true,  chromaDepth: 0.0, zoomOnBeat: 0.15 },
-  { id: "ice",           label: "Ice Crystal",     bg: "aurora",    note: "gradient", particle: "ring",    keyFx: "glow",   chromatic: false, beatShake: 0.0,  palette: ["#B3E5FC", "#FFFFFF"], trails: true,  chromaDepth: 0.3, zoomOnBeat: 0.0  },
-  { id: "galaxy",        label: "Galaxy",          bg: "starfield", note: "glow",     particle: "burst",   keyFx: "pulse",  chromatic: false, beatShake: 0.1,  palette: ["#A020F0", "#FF69B4"], trails: true,  chromaDepth: 0.4, zoomOnBeat: 0.25 },
-  { id: "confetti",      label: "Confetti Party",  bg: "plain",     note: "solid",    particle: "burst",   keyFx: "pulse",  chromatic: false, beatShake: 0.4,  palette: ["#FF0080", "#00FFFF"], trails: false, chromaDepth: 0.0, zoomOnBeat: 0.5  },
-  { id: "laser",         label: "Laser Show",      bg: "plain",     note: "solid",    particle: "sparks",  keyFx: "glow",   chromatic: false, beatShake: 0.2,  palette: ["#FF0000", "#00FF88"], trails: true,  chromaDepth: 0.5, zoomOnBeat: 0.3  },
-  { id: "monochrome",    label: "Monochrome",      bg: "plain",     note: "solid",    particle: "burst",   keyFx: "glow",   chromatic: false, beatShake: 0.0,  palette: ["#FFFFFF", "#AAAAAA"], trails: false, chromaDepth: 0.0, zoomOnBeat: 0.0  },
-  { id: "gold",          label: "Gold Rush",       bg: "plain",     note: "glow",     particle: "sparks",  keyFx: "glow",   chromatic: false, beatShake: 0.05, palette: ["#FFD700", "#FFA500"], trails: true,  chromaDepth: 0.0, zoomOnBeat: 0.1  },
-  { id: "hologram",      label: "Hologram",        bg: "grid",      note: "gradient", particle: "ring",    keyFx: "pulse",  chromatic: true,  beatShake: 0.05, palette: ["#00FFFF", "#FF00FF"], trails: false, chromaDepth: 0.85,zoomOnBeat: 0.15 },
-  { id: "underwater",    label: "Underwater",      bg: "aurora",    note: "gradient", particle: "burst",   keyFx: "pulse",  chromatic: false, beatShake: 0.0,  palette: ["#0077BE", "#7EE8FA"], trails: true,  chromaDepth: 0.2, zoomOnBeat: 0.05 },
-  { id: "storm",         label: "Lightning Storm", bg: "storm",     note: "solid",    particle: "sparks",  keyFx: "glow",   chromatic: false, beatShake: 0.6,  palette: ["#FFEB3B", "#FFFFFF"], trails: false, chromaDepth: 0.0, zoomOnBeat: 0.6  },
-  { id: "rainbow-flow",  label: "Rainbow Flow",    bg: "grid",      note: "rainbow",  particle: "burst",   keyFx: "pulse",  chromatic: false, beatShake: 0.1,  palette: ["rainbow"],            trails: true,  chromaDepth: 0.0, zoomOnBeat: 0.2  },
-  { id: "retro-arcade",  label: "Retro Arcade",    bg: "vapor",     note: "solid",    particle: "burst",   keyFx: "glow",   chromatic: false, beatShake: 0.15, palette: ["#FF0000", "#00FF00"], trails: false, chromaDepth: 0.4, zoomOnBeat: 0.25 },
+  { id: "neon-cyan",     label: "Neon Cyan",       bg: "grid",      note: "glow",     particle: "burst",   keyFx: "glow",   chromatic: false, beatShake: 0.0,  palette: ["#00F0FF", "#FF003C"], trails: false, chromaDepth: 0.0, pulseGlow: 0.15 },
+  { id: "neon-pink",     label: "Neon Pink",       bg: "grid",      note: "glow",     particle: "burst",   keyFx: "glow",   chromatic: false, beatShake: 0.0,  palette: ["#FF00E6", "#00F0FF"], trails: true,  chromaDepth: 0.0, pulseGlow: 0.25 },
+  { id: "aurora",        label: "Aurora Waves",    bg: "aurora",    note: "gradient", particle: "ring",    keyFx: "pulse",  chromatic: false, beatShake: 0.1,  palette: ["#7CFF9A", "#00F0FF"], trails: true,  chromaDepth: 0.0, pulseGlow: 0.2  },
+  { id: "vaporwave",     label: "Vaporwave",       bg: "vapor",     note: "gradient", particle: "sparks",  keyFx: "pulse",  chromatic: true,  beatShake: 0.15, palette: ["#FF71CE", "#01CDFE"], trails: false, chromaDepth: 0.6, pulseGlow: 0.3  },
+  { id: "matrix",        label: "Matrix Rain",     bg: "matrix",    note: "solid",    particle: "sparks",  keyFx: "glow",   chromatic: false, beatShake: 0.0,  palette: ["#00FF41", "#88FF88"], trails: true,  chromaDepth: 0.0, pulseGlow: 0.1  },
+  { id: "starfield",     label: "Starfield",       bg: "starfield", note: "glow",     particle: "burst",   keyFx: "pulse",  chromatic: false, beatShake: 0.1,  palette: ["#FFFFFF", "#FFD700"], trails: true,  chromaDepth: 0.0, pulseGlow: 0.25 },
+  { id: "sunset",        label: "Sunset",          bg: "sunset",    note: "gradient", particle: "burst",   keyFx: "glow",   chromatic: false, beatShake: 0.1,  palette: ["#FF6B6B", "#FFD93D"], trails: false, chromaDepth: 0.0, pulseGlow: 0.15 },
+  { id: "cyberpunk",     label: "Cyberpunk",       bg: "grid",      note: "solid",    particle: "burst",   keyFx: "glow",   chromatic: true,  beatShake: 0.3,  palette: ["#FF0080", "#00FFFF"], trails: false, chromaDepth: 0.9, pulseGlow: 0.4  },
+  { id: "fire",          label: "Fire",            bg: "sunset",    note: "glow",     particle: "sparks",  keyFx: "glow",   chromatic: false, beatShake: 0.25, palette: ["#FF3D00", "#FFC107"], trails: true,  chromaDepth: 0.0, pulseGlow: 0.3  },
+  { id: "ice",           label: "Ice Crystal",     bg: "aurora",    note: "gradient", particle: "ring",    keyFx: "glow",   chromatic: false, beatShake: 0.0,  palette: ["#B3E5FC", "#FFFFFF"], trails: true,  chromaDepth: 0.3, pulseGlow: 0.2  },
+  { id: "galaxy",        label: "Galaxy",          bg: "starfield", note: "glow",     particle: "burst",   keyFx: "pulse",  chromatic: false, beatShake: 0.1,  palette: ["#A020F0", "#FF69B4"], trails: true,  chromaDepth: 0.4, pulseGlow: 0.35 },
+  { id: "confetti",      label: "Confetti Party",  bg: "plain",     note: "solid",    particle: "burst",   keyFx: "pulse",  chromatic: false, beatShake: 0.4,  palette: ["#FF0080", "#00FFFF"], trails: false, chromaDepth: 0.0, pulseGlow: 0.5  },
+  { id: "laser",         label: "Laser Show",      bg: "plain",     note: "solid",    particle: "sparks",  keyFx: "glow",   chromatic: false, beatShake: 0.2,  palette: ["#FF0000", "#00FF88"], trails: true,  chromaDepth: 0.5, pulseGlow: 0.4  },
+  { id: "monochrome",    label: "Monochrome",      bg: "plain",     note: "solid",    particle: "burst",   keyFx: "glow",   chromatic: false, beatShake: 0.0,  palette: ["#FFFFFF", "#AAAAAA"], trails: false, chromaDepth: 0.0, pulseGlow: 0.1  },
+  { id: "gold",          label: "Gold Rush",       bg: "plain",     note: "glow",     particle: "sparks",  keyFx: "glow",   chromatic: false, beatShake: 0.05, palette: ["#FFD700", "#FFA500"], trails: true,  chromaDepth: 0.0, pulseGlow: 0.2  },
+  { id: "hologram",      label: "Hologram",        bg: "grid",      note: "gradient", particle: "ring",    keyFx: "pulse",  chromatic: true,  beatShake: 0.05, palette: ["#00FFFF", "#FF00FF"], trails: false, chromaDepth: 0.85,pulseGlow: 0.35 },
+  { id: "underwater",    label: "Underwater",      bg: "aurora",    note: "gradient", particle: "burst",   keyFx: "pulse",  chromatic: false, beatShake: 0.0,  palette: ["#0077BE", "#7EE8FA"], trails: true,  chromaDepth: 0.2, pulseGlow: 0.15 },
+  { id: "storm",         label: "Lightning Storm", bg: "storm",     note: "solid",    particle: "sparks",  keyFx: "glow",   chromatic: false, beatShake: 0.6,  palette: ["#FFEB3B", "#FFFFFF"], trails: false, chromaDepth: 0.0, pulseGlow: 0.5  },
+  { id: "rainbow-flow",  label: "Rainbow Flow",    bg: "grid",      note: "rainbow",  particle: "burst",   keyFx: "pulse",  chromatic: false, beatShake: 0.1,  palette: ["rainbow"],            trails: true,  chromaDepth: 0.0, pulseGlow: 0.3  },
+  { id: "retro-arcade",  label: "Retro Arcade",    bg: "vapor",     note: "solid",    particle: "burst",   keyFx: "glow",   chromatic: false, beatShake: 0.15, palette: ["#FF0000", "#00FF00"], trails: false, chromaDepth: 0.4, pulseGlow: 0.3  },
 ];
 
 // ============ Background renderers ============
@@ -382,7 +382,7 @@ function roundRect(ctx, x, y, w, h, r) {
   ctx.closePath();
 }
 
-function hexA(hex, a) {
+export function hexA(hex, a) {
   // hex like "#RRGGBB" or "rgb(..)" — normalize
   if (hex.startsWith("hsl") || hex.startsWith("rgb")) return hex;
   const m = /^#?([a-f0-9]{2})([a-f0-9]{2})([a-f0-9]{2})$/i.exec(hex);

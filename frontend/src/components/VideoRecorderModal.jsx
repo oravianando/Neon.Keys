@@ -6,16 +6,12 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { createVideoRecorder } from "@/lib/videoRecorder";
+import { renderFrame } from "@/lib/videoFrameRenderer";
 import {
   VFX_PRESETS,
-  drawBackground,
-  drawNote,
-  drawPiano,
   spawnParticles,
   updateParticles,
-  drawParticles,
   keyXFractionCanvas,
-  keyWidthFractionCanvas,
 } from "@/lib/vfx";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -26,7 +22,6 @@ const RESOLUTIONS = [
   { id: "4k",  label: "4K 2160p",  width: 3840, height: 2160, bitrate: 20_000_000, fps: 24 },
 ];
 
-const LOOKAHEAD = 4;
 const INTRO_DURATION = 2.5;
 
 // piano occupies bottom ~22% of the canvas; notes above
@@ -37,11 +32,12 @@ function dimsForResolution(id) {
 }
 
 // Estimate final file-size in MB for a given resolution + song duration (seconds).
-// Formula: (video bitrate + ~128kbps audio) * duration / 8 / 1024 / 1024
-function estimateSizeMB(resId, seconds) {
+// Applies a 60% discount when VBR is enabled (typical VBR savings on piano visualizations).
+function estimateSizeMB(resId, seconds, vbr = false) {
   const r = RESOLUTIONS.find((x) => x.id === resId) || RESOLUTIONS[0];
   const audio = 128_000; // Opus/AAC ~128 kbps
-  const bytes = ((r.bitrate + audio) * seconds) / 8;
+  const bitrate = vbr ? r.bitrate * 0.6 : r.bitrate;
+  const bytes = ((bitrate + audio) * seconds) / 8;
   const mb = bytes / (1024 * 1024);
   if (mb < 1) return `${Math.round(mb * 1024)}KB`;
   if (mb < 100) return `${mb.toFixed(1)}MB`;
@@ -65,6 +61,8 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
   const [showTitleCard, setShowTitleCard] = useState(true);
   const [showSubtitles, setShowSubtitles] = useState(true);
   const [resolutionId, setResolutionId] = useState("hd");
+  const [useVbr, setUseVbr] = useState(true);
+  const [aiEnabled, setAiEnabled] = useState(true);
   const dimsRef = useRef(dimsForResolution("hd"));
 
   // playback engine state refs
@@ -190,7 +188,11 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
     dimsRef.current = dims;
     canvas.width = dims.w;
     canvas.height = dims.h;
-    const recorder = createVideoRecorder(canvas, { fps: dims.fps, bitrate: dims.bitrate });
+    const recorder = createVideoRecorder(canvas, {
+      fps: dims.fps,
+      bitrate: dims.bitrate,
+      bitrateMode: useVbr ? "variable" : "constant",
+    });
     recorderRef.current = recorder;
     setVideoExt(recorder.fileExtension);
 
@@ -323,6 +325,16 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
     }
   };
 
+  // Auto-run AI enhance when the toggle is ON and a song is loaded (once per song)
+  const aiAutoDoneRef = useRef(null);
+  useEffect(() => {
+    if (!open || !aiEnabled || !song?.id) return;
+    if (aiAutoDoneRef.current === song.id) return;
+    aiAutoDoneRef.current = song.id;
+    runAiEnhance();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, aiEnabled, song?.id]);
+
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) cleanup(); onOpenChange(v); }}>
       <DialogContent className="max-w-4xl bg-[#050505] border-white/10 text-white" data-testid="video-recorder-modal">
@@ -342,7 +354,7 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
               <div className="flex gap-1" data-testid="resolution-picker">
                 {RESOLUTIONS.map((r) => {
                   const dur = (song?.duration || 0) + INTRO_DURATION + 1;
-                  const size = estimateSizeMB(r.id, dur);
+                  const size = estimateSizeMB(r.id, dur, useVbr);
                   return (
                     <button
                       key={r.id}
@@ -366,13 +378,20 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
             <div className="flex items-center gap-2 border-l border-white/10 pl-3">
               <Wand2 size={13} className="text-yellow-300" />
               <span className="text-[10px] uppercase tracking-[0.2em] text-white/60">AI</span>
+              <Switch
+                checked={aiEnabled}
+                onCheckedChange={setAiEnabled}
+                disabled={state === "recording"}
+                data-testid="toggle-ai-enhance"
+                aria-label="Enable AI enhancer"
+              />
             </div>
             <button
               onClick={runAiEnhance}
-              disabled={aiEnhancing || !song || state === "recording"}
+              disabled={aiEnhancing || !song || state === "recording" || !aiEnabled}
               className="flex items-center gap-1.5 px-3 h-8 rounded bg-yellow-300 text-black text-[11px] font-bold uppercase tracking-wider hover:shadow-[0_0_16px_rgba(253,224,71,0.6)] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
               data-testid="ai-enhance-button"
-              title="Let Claude pick the best VFX preset + generate a title & tagline"
+              title={aiEnabled ? "Let Claude pick the best VFX preset + generate a title & tagline" : "AI enhancer is OFF"}
             >
               <Wand2 size={12} className={aiEnhancing ? "animate-spin" : ""} />
               {aiEnhancing ? "Thinking…" : "AI Suggest"}
@@ -409,6 +428,15 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
                   data-testid="toggle-title-card"
                 />
                 Title Card
+              </label>
+              <label className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-white/60">
+                <Switch
+                  checked={useVbr}
+                  onCheckedChange={setUseVbr}
+                  disabled={state === "recording"}
+                  data-testid="toggle-vbr"
+                />
+                <span title="Variable bitrate — smaller file sizes, best for 4K">VBR</span>
               </label>
               <label className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-white/60">
                 <Switch
@@ -529,129 +557,3 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
   );
 }
 
-// ------------------- Frame renderer -------------------
-function renderFrame(ctx, preset, timeAbs, currentTime, song, activeKeys, particles, overlay, dims) {
-  const w = dims.w, h = dims.h;
-  const NOTES_H = dims.notesH;
-  const PIANO_H = dims.pianoH;
-  const tracksColors = overlay?.trackColors || {};
-
-  // Beat shake + zoom on beat
-  let shakeX = 0, shakeY = 0, zoom = 1;
-  const activeSize = activeKeys instanceof Map ? activeKeys.size : activeKeys.size;
-  const beatActive = activeSize > 0;
-  if (preset.beatShake > 0 && beatActive) {
-    shakeX = (Math.random() - 0.5) * preset.beatShake * 20;
-    shakeY = (Math.random() - 0.5) * preset.beatShake * 20;
-  }
-  if ((preset.zoomOnBeat || 0) > 0 && beatActive) {
-    zoom = 1 + preset.zoomOnBeat * 0.06 * (Math.sin(timeAbs * 22) * 0.5 + 0.5);
-  }
-
-  ctx.save();
-  ctx.translate(w / 2 + shakeX, h / 2 + shakeY);
-  ctx.scale(zoom, zoom);
-  ctx.translate(-w / 2, -h / 2);
-
-  // Background
-  drawBackground(ctx, w, h, preset.bg, timeAbs, preset.palette);
-
-  // Rolling notes
-  ctx.save();
-  ctx.beginPath();
-  ctx.rect(0, 0, w, NOTES_H);
-  ctx.clip();
-  if (song?.notes) {
-    for (const n of song.notes) {
-      const relStart = n.time - currentTime;
-      const relEnd = n.time + n.duration - currentTime;
-      if (relEnd < 0 || relStart > LOOKAHEAD) continue;
-      const bottomY = NOTES_H - (relStart / LOOKAHEAD) * NOTES_H;
-      const topY = NOTES_H - (relEnd / LOOKAHEAD) * NOTES_H;
-      const noteH = Math.max(6, bottomY - topY);
-      const xFrac = keyXFractionCanvas(n.midi);
-      const wFrac = keyWidthFractionCanvas(n.midi);
-      const nx = xFrac * w - (wFrac * w) / 2 + 2;
-      const nw = Math.max(4, wFrac * w - 3);
-      const trackId = n.track !== undefined ? String(n.track) : "0";
-      const tc = tracksColors[trackId];
-      const color = tc || (n.hand === "left" ? preset.palette[1] : preset.palette[0]);
-      drawNote(ctx, nx, topY, nw, noteH, preset.note, color, 1);
-    }
-  }
-  // Impact line
-  ctx.strokeStyle = "rgba(0,240,255,0.5)";
-  ctx.lineWidth = 2;
-  ctx.shadowColor = preset.palette[0];
-  ctx.shadowBlur = 10;
-  ctx.beginPath(); ctx.moveTo(0, NOTES_H - 1); ctx.lineTo(w, NOTES_H - 1); ctx.stroke();
-  ctx.shadowBlur = 0;
-  ctx.restore();
-
-  drawParticles(ctx, particles, preset.trails);
-
-  // Piano keys
-  drawPiano(ctx, 0, NOTES_H, w, PIANO_H, activeKeys, preset.palette, preset.keyFx, tracksColors);
-
-  ctx.restore(); // undo zoom+shake
-
-  // Chromatic aberration
-  const cd = preset.chromaDepth || 0;
-  if (preset.chromatic || cd > 0) {
-    const off = Math.max(2, 12 * (cd || 0.4));
-    ctx.save();
-    ctx.globalCompositeOperation = "screen";
-    ctx.globalAlpha = 0.15 + 0.35 * cd;
-    ctx.filter = "hue-rotate(180deg)";
-    ctx.drawImage(ctx.canvas, -off, 0);
-    ctx.filter = "hue-rotate(0deg)";
-    ctx.drawImage(ctx.canvas, off, 0);
-    ctx.filter = "none";
-    ctx.globalCompositeOperation = "source-over";
-    ctx.globalAlpha = 1;
-    ctx.restore();
-  }
-
-  // AI title card (during intro)
-  if (overlay && overlay.introDur > 0 && overlay.elapsed < overlay.introDur) {
-    const t = overlay.elapsed;
-    const fadeIn = Math.min(1, t / 0.4);
-    const fadeOut = Math.min(1, (overlay.introDur - t) / 0.5);
-    const alpha = Math.max(0, Math.min(fadeIn, fadeOut));
-    const scale = h / 720;
-    ctx.save();
-    ctx.fillStyle = `rgba(0,0,0,${0.55 * alpha})`;
-    ctx.fillRect(0, 0, w, h);
-    ctx.globalAlpha = alpha;
-    ctx.textAlign = "center";
-    ctx.fillStyle = preset.palette[0];
-    ctx.shadowColor = preset.palette[0];
-    ctx.shadowBlur = 30 * scale;
-    ctx.font = `bold ${Math.round(88 * scale)}px 'Unbounded', sans-serif`;
-    ctx.fillText(overlay.title || "", w / 2, h / 2 - 20 * scale);
-    ctx.shadowBlur = 12 * scale;
-    ctx.font = `${Math.round(24 * scale)}px monospace`;
-    ctx.fillStyle = "#ffffff";
-    if (overlay.tagline) ctx.fillText(overlay.tagline, w / 2, h / 2 + 40 * scale);
-    ctx.restore();
-  }
-
-  // Chord subtitle (bottom-center) during song playback
-  if (overlay && overlay.showSubtitles && overlay.elapsed >= overlay.introDur && overlay.chords?.length) {
-    const st = overlay.songTime;
-    const active = [...overlay.chords].reverse().find((c) => c.time <= st);
-    if (active) {
-      const scale = h / 720;
-      ctx.save();
-      ctx.textAlign = "center";
-      ctx.font = `bold ${Math.round(42 * scale)}px 'Unbounded', sans-serif`;
-      ctx.fillStyle = "rgba(0,0,0,0.55)";
-      ctx.fillRect(w / 2 - 120 * scale, NOTES_H - 70 * scale, 240 * scale, 50 * scale);
-      ctx.fillStyle = preset.palette[0];
-      ctx.shadowColor = preset.palette[0];
-      ctx.shadowBlur = 20 * scale;
-      ctx.fillText(active.name, w / 2, NOTES_H - 32 * scale);
-      ctx.restore();
-    }
-  }
-}

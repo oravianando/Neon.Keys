@@ -218,6 +218,7 @@ class RefineRequest(BaseModel):
     name: Optional[str] = None
     difficulty: str = "intermediate"  # 'beginner' | 'intermediate' | 'advanced'
     force_refresh: bool = False
+    multi_track: bool = False  # when True, LLM also assigns notes to 3-6 instrument tracks
 
 
 class Chord(BaseModel):
@@ -247,7 +248,7 @@ def _extract_json(text: str) -> dict:
     return {}
 
 
-def _refine_cache_key(notes: List[dict], difficulty: str) -> str:
+def _refine_cache_key(notes: List[dict], difficulty: str, multi_track: bool = False) -> str:
     canonical = json.dumps(
         [
             {
@@ -261,7 +262,7 @@ def _refine_cache_key(notes: List[dict], difficulty: str) -> str:
         separators=(",", ":"),
         sort_keys=True,
     )
-    payload = f"{REFINE_VERSION}|{difficulty}|{canonical}"
+    payload = f"{REFINE_VERSION}|{difficulty}|mt={int(multi_track)}|{canonical}"
     return hashlib.sha256(payload.encode()).hexdigest()
 
 
@@ -287,8 +288,12 @@ DIFFICULTY_INSTRUCTIONS = {
 }
 
 
-async def _classify_hands(notes: List[dict], difficulty: str) -> dict:
-    """Send notes to Claude and get back {right, left, drop, chords}."""
+async def _classify_hands(notes: List[dict], difficulty: str, multi_track: bool = False) -> dict:
+    """Send notes to Claude and get back {right, left, drop, chords, tracks?}.
+
+    When multi_track=True, the LLM also assigns each retained note to one of the
+    instrument tracks below, based on pitch range, density, and rhythmic role.
+    """
     from emergentintegrations.llm.chat import LlmChat, UserMessage
 
     lines = []
@@ -301,6 +306,19 @@ async def _classify_hands(notes: List[dict], difficulty: str) -> dict:
     diff_key = difficulty if difficulty in DIFFICULTY_INSTRUCTIONS else "intermediate"
     diff_prompt = DIFFICULTY_INSTRUCTIONS[diff_key]
 
+    mt_block = ""
+    if multi_track:
+        mt_block = (
+            "\n5. INSTRUMENT SEPARATION — assign each retained note to ONE of these instrument tracks:\n"
+            "   - 'melody'  → single-note lead line, usually MIDI >= 65, non-repeating, moves stepwise or by small leaps\n"
+            "   - 'harmony' → mid-range chord tones / arpeggios, MIDI 55-75, often played simultaneously\n"
+            "   - 'bass'    → low sustained notes, MIDI 24-55, rhythmic root/fifth movement\n"
+            "   - 'pad'     → long-held mid/high sustained chord voicings (duration > 1.5s), MIDI 55-84\n"
+            "   - 'accent'  → very short, high-velocity notes (duration < 0.15s, velocity > 0.85), MIDI 70+\n"
+            "   Every retained note goes in EXACTLY ONE track. Aim for at least 2 distinct instrument tracks;\n"
+            "   only include a track if it has ≥ 3 notes. Drop empty categories entirely.\n"
+        )
+
     system_message = (
         "You are an expert piano-music-theory assistant. You will receive detected note events from audio-to-MIDI extraction.\n"
         "Each line is: `index midi time duration velocity`. Time is in seconds. MIDI 60 = middle C (C4).\n\n"
@@ -309,12 +327,18 @@ async def _classify_hands(notes: List[dict], difficulty: str) -> dict:
         "1. Classify each retained note into 'right' (melody, usually MIDI >= 60) or 'left' (bass/chord accompaniment, usually MIDI < 60).\n"
         "2. Put noise/mistake indices into 'drop'. Also drop notes per the difficulty rules above.\n"
         "3. Detect the chord progression as {time_seconds, chord_name} entries. Chord names use standard notation like 'Cmaj', 'Am', 'G7', 'F/A', 'Dm7'. Return 4-30 chords depending on piece length. Chords should be time-ordered.\n"
-        "4. Every input index must appear in exactly one of right/left/drop.\n\n"
+        "4. Every input index must appear in exactly one of right/left/drop.\n"
+        f"{mt_block}\n"
         "Return ONLY a JSON object, no prose, no markdown:\n"
-        '{"right": [int, ...], "left": [int, ...], "drop": [int, ...], "chords": [{"time": number, "name": string}, ...]}'
+        + (
+            '{"right":[int,...],"left":[int,...],"drop":[int,...],"chords":[{"time":number,"name":string},...],'
+            '"tracks":{"melody":[int,...],"harmony":[int,...],"bass":[int,...],"pad":[int,...],"accent":[int,...]}}'
+            if multi_track
+            else '{"right": [int, ...], "left": [int, ...], "drop": [int, ...], "chords": [{"time": number, "name": string}, ...]}'
+        )
     )
 
-    user_text = f"Total notes: {len(notes)}\nDifficulty: {diff_key}\n\nNotes:\n{notes_block}"
+    user_text = f"Total notes: {len(notes)}\nDifficulty: {diff_key}\nMultiTrack: {multi_track}\n\nNotes:\n{notes_block}"
 
     chat = LlmChat(
         api_key=EMERGENT_LLM_KEY,
@@ -329,6 +353,16 @@ async def _classify_hands(notes: List[dict], difficulty: str) -> dict:
     return parsed
 
 
+# Map LLM instrument-role names to Tone.js instrument families + General-MIDI programs.
+TRACK_ROLE_MAP = {
+    "melody":  {"family": "piano",     "program": 0,  "name": "Melody",  "color": "#00F0FF"},
+    "harmony": {"family": "strings",   "program": 48, "name": "Harmony", "color": "#7CFF9A"},
+    "bass":    {"family": "bass",      "program": 32, "name": "Bass",    "color": "#FF00E6"},
+    "pad":     {"family": "synthPad",  "program": 88, "name": "Pad",     "color": "#B388FF"},
+    "accent":  {"family": "synthLead", "program": 80, "name": "Accent",  "color": "#FFD700"},
+}
+
+
 @api_router.post("/refine-midi")
 async def refine_midi(payload: RefineRequest):
     """Use Claude Sonnet 4.6 to tag notes with left/right hand, drop noise, detect chords. Cached by content-hash."""
@@ -340,7 +374,8 @@ async def refine_midi(payload: RefineRequest):
         return {"notes": [], "chords": [], "stats": {"input": 0, "output": 0, "dropped": 0, "refined": False, "cached": False}}
 
     difficulty = payload.difficulty or "intermediate"
-    cache_key = _refine_cache_key(original, difficulty)
+    multi_track = bool(payload.multi_track)
+    cache_key = _refine_cache_key(original, difficulty, multi_track)
 
     if not payload.force_refresh:
         cached = await db.midi_refinements.find_one({"key": cache_key}, {"_id": 0})
@@ -348,6 +383,7 @@ async def refine_midi(payload: RefineRequest):
             return {
                 "notes": cached["notes"],
                 "chords": cached.get("chords", []),
+                "tracks": cached.get("tracks", []),
                 "stats": {**cached.get("stats", {}), "cached": True},
             }
 
@@ -355,10 +391,10 @@ async def refine_midi(payload: RefineRequest):
     passthrough = original[MAX_LLM_NOTES:]
 
     try:
-        classification = await _classify_hands(to_llm, difficulty)
+        classification = await _classify_hands(to_llm, difficulty, multi_track=multi_track)
     except Exception as e:
         logger.warning(f"LLM refinement failed, using heuristic fallback: {e}")
-        classification = {"right": [], "left": [], "drop": [], "chords": []}
+        classification = {"right": [], "left": [], "drop": [], "chords": [], "tracks": {}}
         for i, n in enumerate(to_llm):
             (classification["right"] if n["midi"] >= 60 else classification["left"]).append(i)
 
@@ -366,6 +402,7 @@ async def refine_midi(payload: RefineRequest):
     left_set = set(classification.get("left", []) or [])
     drop_set = set(classification.get("drop", []) or [])
     chords_raw = classification.get("chords", []) or []
+    tracks_raw = classification.get("tracks", {}) or {}
 
     # Difficulty-aware drop cap
     drop_cap_pct = {"beginner": 0.30, "intermediate": 0.20, "advanced": 0.10}.get(difficulty, 0.20)
@@ -391,6 +428,68 @@ async def refine_midi(payload: RefineRequest):
 
     refined.sort(key=lambda x: (x["time"], x["midi"]))
 
+    # Build instrument-track breakdown when multi_track is requested.
+    # tracks_raw is a dict like {"melody":[i,...], "bass":[i,...], ...}. We map to
+    # rich track objects consumed by the frontend.
+    tracks: List[dict] = []
+    if multi_track:
+        # Index into refined array: original-index i → its position in refined
+        idx_in_refined = {}
+        # NOTE: refined[j] corresponds to input index (before drop). Reconstruct.
+        j = 0
+        for i, n in enumerate(to_llm):
+            if i in drop_set:
+                continue
+            idx_in_refined[i] = j
+            j += 1
+
+        tid = 0
+        for role_key, meta in TRACK_ROLE_MAP.items():
+            indices = (tracks_raw or {}).get(role_key) or []
+            track_notes: List[dict] = []
+            for i in indices:
+                if not isinstance(i, int) or i not in idx_in_refined:
+                    continue
+                jj = idx_in_refined[i]
+                if jj >= len(refined):
+                    continue
+                n = refined[jj].copy()
+                n["track"] = tid
+                track_notes.append(n)
+            if len(track_notes) < 3:
+                continue
+            track_notes.sort(key=lambda x: (x["time"], x["midi"]))
+            tracks.append({
+                "id": f"t{tid}",
+                "name": meta["name"],
+                "family": meta["family"],
+                "program": meta["program"],
+                "isDrum": False,
+                "notes": track_notes,
+            })
+            tid += 1
+
+        # If we still have < 2 tracks, fall back to hand-based split so the user
+        # always gets some multi-track experience.
+        if len(tracks) < 2:
+            tracks = []
+            right_notes = [dict(n, track=0) for n in refined if n.get("hand") == "right"]
+            left_notes = [dict(n, track=1) for n in refined if n.get("hand") == "left"]
+            if right_notes:
+                tracks.append({"id": "t0", "name": "Melody", "family": "piano", "program": 0, "isDrum": False, "notes": right_notes})
+            if left_notes:
+                tracks.append({"id": "t1", "name": "Bass",   "family": "bass",  "program": 32, "isDrum": False, "notes": left_notes})
+
+        # Restamp track index on refined so the flat notes carry track ids too
+        track_lookup = {}
+        for t in tracks:
+            for n in t["notes"]:
+                track_lookup[(n["time"], n["midi"])] = int(t["id"][1:])
+        for n in refined:
+            key = (n["time"], n["midi"])
+            if key in track_lookup:
+                n["track"] = track_lookup[key]
+
     # Clean up chords
     chords: List[dict] = []
     for c in chords_raw:
@@ -409,6 +508,8 @@ async def refine_midi(payload: RefineRequest):
         "dropped": len(original) - len(refined),
         "refined": True,
         "difficulty": difficulty,
+        "multi_track": multi_track,
+        "track_count": len(tracks),
         "cached": False,
     }
 
@@ -419,13 +520,14 @@ async def refine_midi(payload: RefineRequest):
             "key": cache_key,
             "notes": refined,
             "chords": chords,
+            "tracks": tracks,
             "stats": stats,
             "created_at": datetime.now(timezone.utc).isoformat(),
         }},
         upsert=True,
     )
 
-    return {"notes": refined, "chords": chords, "stats": stats}
+    return {"notes": refined, "chords": chords, "tracks": tracks, "stats": stats}
 
 
 @api_router.put("/songs/{song_id}")

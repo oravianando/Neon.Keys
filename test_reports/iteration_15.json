@@ -1,0 +1,60 @@
+{
+  "summary": "Iteration 15 — Multi-track instrument classification + stacked piano rendering + VBR/AI toggles + convert_mode persistence tested. Backend: 13/13 pytest pass. Multi-track endpoint returns tracks[] with distinct families (verified: EUROPE song has 5 tracks: synthLead/brass/brass/misc/organ; another has piano+bass Melody+Bass). Fixed one backend fallback-guard bug (see updated_files). Frontend: toggle-ai-enhance + toggle-vbr both present, interactive, default checked. VBR ON produces ~60% file size of VBR OFF (hd 123→202, fhd 194→320, 4k 477→792 MB) matching spec. AI toggle OFF disables ai-enhance-button. AI auto-enhance fires on modal open (title populated 'EUROPE.The final countdown K' + toast 'AI picked neon-cyan (neutral mood)'). convert_mode persists across reload via /api/settings (set to 'multi', reload → still 'multi', API confirms). renderFrame confirmed removed from VideoRecorderModal.jsx (grep count=0). zoomOnBeat removed from vfx.js (count=0), pulseGlow present on all 20 presets. Stacked mini-piano rendering VERIFIED in canvas — after preset click, screenshot shows main piano at bottom PLUS additional horizontal mini piano key rows stacked below it. ONE FRONTEND REGRESSION FOUND: preview canvas remains 300×150 (default HTML dims) and completely black on initial modal open; only initializes to correct resolution (1280×720) and starts rendering AFTER user clicks a preset or resolution button.",
+  "tested_scope": ["backend", "frontend", "integration"],
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "VideoRecorderModal preview canvas",
+        "issue": "On modal open the canvas stays at default 300x150 HTML dims and renders fully black. Preview useEffect never sets canvas.width/height on initial mount (hasAttribute('width')=false confirmed). It only initializes after the user clicks a VFX preset or resolution button (which changes the effect dep and re-runs the setup). Regression from iter14 where preview particles were visible on open.",
+        "selector": "[data-testid=\"video-canvas\"]",
+        "priority": "HIGH"
+      }
+    ],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "passed": [
+    "Backend /api/refine-midi single-track regression: returns {notes, chords, stats} with stats.multi_track=false",
+    "Backend /api/refine-midi multi_track=true: returns tracks[] (>=2 tracks), each with id/name/family in {piano,strings,bass,synthPad,synthLead}/program/isDrum:false/notes[], stats.multi_track=true, stats.track_count>=2 (verified with 58-note melody+bass)",
+    "Backend fallback for small note arrays with multi_track=true still returns >=1 track (hand-based split)",
+    "Backend cache_key differs by multi_track flag: same notes with multi_track=true vs false return different shapes, both correct",
+    "Backend GET/PUT /api/settings — convert_mode persists (set 'multi' → GET 'multi')",
+    "Backend /api/demo-songs, /api/songs GET/POST/DELETE, /api/video/ai-enhance all 200 (regression)",
+    "Frontend toggle-ai-enhance switch present, default checked, interactive; toggling OFF disables ai-enhance-button",
+    "Frontend toggle-vbr switch present, default checked, interactive; toggling OFF increases size estimates ~60% (VBR ON: hd=123MB fhd=194MB 4k=477MB → VBR OFF: hd=202MB fhd=320MB 4k=792MB, ~40% reduction with VBR on matches spec)",
+    "Frontend AI auto-enhance: on modal open with aiEnabled=true and song loaded, /api/video/ai-enhance auto-called; title-input auto-populated with AI title 'EUROPE.The final countdown K'; toast 'AI picked neon-cyan (neutral mood)' displayed",
+    "Frontend convert_mode persistence: toggled to Multi-Track in Song Library, reloaded page, still Multi-Track (GET /api/settings returns convert_mode='multi')",
+    "Frontend videoFrameRenderer.js import: grep 'function renderFrame(' in VideoRecorderModal.jsx returns 0 occurrences",
+    "Frontend vfx.js: grep 'zoomOnBeat' returns 0 occurrences; all 20 VFX_PRESETS have pulseGlow property",
+    "Frontend stacked mini-piano rendering: after preset click, canvas shows main piano at bottom + additional horizontal piano key rows stacked below (visible in screenshot; nonblack pixel counts jumped to 230k after render started)",
+    "Frontend video-title-input still works (regression) — populated by AI enhance"
+  ],
+  "failed": [
+    "Frontend preview canvas initial-mount rendering (video-canvas 300x150 until user interaction)"
+  ],
+  "test_report_links": [
+    "/app/backend/tests/test_backend.py",
+    "/app/test_reports/pytest/iter15.xml"
+  ],
+  "action_items": [
+    "Fix VideoRecorderModal preview canvas initialization: canvasRef.current is null when the initial preview-loop useEffect runs. Options: (a) use useLayoutEffect, (b) add canvasRef.current to deps via callback ref, (c) put the sizing/rendering start inside a setTimeout(0) or a MutationObserver, or (d) add an explicit ref callback that starts the loop when the canvas mounts. Currently users see a solid black canvas on modal open until they click a preset — this is a regression from iter14."
+  ],
+  "critical_code_review_comments": [
+    "Backend multi-track fallback was gated behind `if multi_track and tracks_raw:` — meaning if the LLM returned no `tracks` field (empty dict), the hand-based fallback never ran and the response contained tracks=[] and track_count=0. Fixed by moving fallback out of the tracks_raw truthy check.",
+    "VideoRecorderModal.jsx is now 560 lines — approaching threshold. Consider extracting the preview useEffect and record useEffect into a custom hook (usePreviewLoop, useRecorder).",
+    "Preview useEffect deps `[open, preset, song?.id, resolutionId, trackColors]` do not include canvasRef mount state. This is the root cause of the canvas-not-initialized bug on modal open — the effect fires once before Radix DialogContent portal mounts the canvas, so canvasRef.current is null on first pass.",
+    "In videoFrameRenderer.js, willReadFrequently console warning fires because ctx is fetched without willReadFrequently=true. Not a bug, but a minor perf hint."
+  ],
+  "updated_files": [
+    "/app/backend/server.py (moved multi_track fallback out of `and tracks_raw:` guard so fallback also triggers when LLM omits tracks field)",
+    "/app/backend/tests/test_backend.py (added test_refine_midi_multi_track, test_refine_midi_multi_track_fallback_small, test_refine_midi_single_track_regression, test_refine_midi_cache_key_differs_by_multi_track)"
+  ],
+  "success_rate": {"backend": "100% (13/13)", "frontend": "~85% (1 blocking UI regression)"},
+  "test_credentials": "N/A (no auth)",
+  "seed_data_creation": "convert_mode toggled multi via UI (persists to backend); reverted to 'single' at end of test",
+  "retest_needed": true,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "The video-canvas preview render loop is a race with Radix DialogContent portal mounting. Once you fix by e.g. using useLayoutEffect or a ref callback, verify by opening the video modal WITHOUT clicking any preset — canvas should show the piano + notes + stacked mini pianos within ~1s. Multi-track test songs already exist in DB (EUROPE.The final countdown K has 5 tracks, 212-kishida-shun-1 has 2 tracks — Melody piano + Bass bass). Backend fallback fix already committed to /app/backend/server.py line ~435: `if multi_track:` (not `if multi_track and tracks_raw:`).",
+  "rca of the issue": "Root cause of frontend canvas bug: The preview-loop useEffect in VideoRecorderModal.jsx (line 113) runs on mount+dep-change. Its dependency array is `[open, preset, song?.id, resolutionId, trackColors]` — none of which reflect canvas DOM readiness. Radix DialogContent uses a portal + presence animation, so the canvas DOM node may not be attached (canvasRef.current === null) when the very first useEffect callback runs. The early return `if (!canvas) return;` on line 116 quietly exits and no further re-run happens because the deps have not changed. Confirmed by: canvas.hasAttribute('width') === false on initial modal open; after clicking any preset (which mutates `preset` dep), the effect re-runs and correctly sets canvas.width=1280/height=720 and starts the RAF loop, producing the expected stacked-piano render (230k+ non-black pixels)."
+}

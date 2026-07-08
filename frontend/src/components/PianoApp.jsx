@@ -110,6 +110,10 @@ export default function PianoApp() {
         setUserSongs(songsRes.data || []);
         if (setRes.data) {
           setSettings({ ...DEFAULT_SETTINGS, ...setRes.data });
+          // Hydrate multi-track conversion preference (snake_case from backend)
+          if (setRes.data.convert_mode === "multi" || setRes.data.convert_mode === "single") {
+            setConvertMode(setRes.data.convert_mode);
+          }
         }
       } catch (e) {
         console.error("Failed to load initial data", e);
@@ -121,12 +125,16 @@ export default function PianoApp() {
   // Persist settings (debounced)
   useEffect(() => {
     const t = setTimeout(() => {
-      axios.put(`${API}/settings`, { id: "global", ...settings }).catch((err) => {
+      axios.put(`${API}/settings`, {
+        id: "global",
+        ...settings,
+        convert_mode: convertMode,
+      }).catch((err) => {
         console.warn("Failed to persist settings", err);
       });
     }, 500);
     return () => clearTimeout(t);
-  }, [settings]);
+  }, [settings, convertMode]);
 
   // Speed sync
   useEffect(() => {
@@ -220,32 +228,40 @@ export default function PianoApp() {
                   notes: parsed.notes,
                   name: parsed.name,
                   difficulty: settings.difficulty,
+                  multi_track: convertMode === "multi",
                 },
-                { timeout: 120000 },
+                { timeout: 180000 },
               );
               parsed.notes = refineRes.data.notes;
               parsed.chords = refineRes.data.chords || [];
               parsed.difficulty = settings.difficulty;
-              // If multi-track conversion requested, split notes by hand into tracks
+              // Multi-track: use AI-produced instrument tracks when available
               if (convertMode === "multi") {
-                const rightNotes = [];
-                const leftNotes = [];
-                for (const n of parsed.notes) {
-                  const t = (n.hand === "left") ? 1 : 0;
-                  const clone = { ...n, track: t };
-                  if (t === 0) { rightNotes.push(clone); }
-                  else { leftNotes.push(clone); }
+                const aiTracks = refineRes.data.tracks || [];
+                if (aiTracks.length >= 2) {
+                  parsed.tracks = aiTracks;
+                } else {
+                  // Fallback to hand-based melody/bass split
+                  const rightNotes = [];
+                  const leftNotes = [];
+                  for (const n of parsed.notes) {
+                    const t = (n.hand === "left") ? 1 : 0;
+                    const clone = { ...n, track: t };
+                    if (t === 0) { rightNotes.push(clone); }
+                    else { leftNotes.push(clone); }
+                  }
+                  parsed.notes = [...rightNotes, ...leftNotes].sort((a, b) => a.time - b.time);
+                  parsed.tracks = [
+                    { id: "t0", name: "Melody", program: 0, family: "piano", isDrum: false, notes: rightNotes },
+                    { id: "t1", name: "Bass",   program: 32, family: "bass", isDrum: false, notes: leftNotes },
+                  ].filter((t) => t.notes.length > 0);
                 }
-                parsed.notes = [...rightNotes, ...leftNotes].sort((a, b) => a.time - b.time);
-                parsed.tracks = [
-                  { id: "t0", name: "Melody", program: 0, family: "piano", isDrum: false, notes: rightNotes },
-                  { id: "t1", name: "Bass",   program: 32, family: "bass", isDrum: false, notes: leftNotes },
-                ].filter((t) => t.notes.length > 0);
               }
               const stats = refineRes.data.stats || {};
               if (stats.refined) {
+                const trackNote = stats.multi_track ? ` • ${stats.track_count} tracks` : "";
                 toast.success(
-                  `AI refined ${stats.input} → ${stats.output} notes${stats.cached ? " (cached)" : ""}`,
+                  `AI refined ${stats.input} → ${stats.output} notes${trackNote}${stats.cached ? " (cached)" : ""}`,
                 );
               }
             } catch (err) {
