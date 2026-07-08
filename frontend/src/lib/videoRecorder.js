@@ -9,7 +9,7 @@ import * as Tone from "tone";
   Also captures Tone.js audio destination as an audio track so the produced
   video contains synced piano audio.
 */
-export function createVideoRecorder(canvas, { fps = 30 } = {}) {
+export function createVideoRecorder(canvas, { fps = 30, bitrate = 5_000_000 } = {}) {
   const videoStream = canvas.captureStream(fps);
 
   // Attach audio from Tone
@@ -39,7 +39,7 @@ export function createVideoRecorder(canvas, { fps = 30 } = {}) {
       break;
     }
   }
-  const rec = new MediaRecorder(videoStream, mimeType ? { mimeType, videoBitsPerSecond: 5_000_000 } : {});
+  const rec = new MediaRecorder(videoStream, mimeType ? { mimeType, videoBitsPerSecond: bitrate } : { videoBitsPerSecond: bitrate });
   const chunks = [];
   rec.ondataavailable = (e) => e.data && e.data.size > 0 && chunks.push(e.data);
 

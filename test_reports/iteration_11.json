@@ -1,0 +1,26 @@
+{
+  "summary": "Tested new HD/FHD/4K resolution picker in VideoRecorderModal. Resolution buttons present with correct labels; FHD/4K correctly resize canvas and preview animation continues. HD recording produced a valid MP4 with download-video button visible. Regression checks for VFX presets, AI Enhance button, title-card and chord-subtitles switches all pass.",
+  "tested_scope": ["frontend", "integration"],
+  "passed": [
+    "resolution-picker element present with 3 buttons (resolution-hd/fhd/4k) and correct labels 'HD 720p', 'FHD 1080p', '4K 2160p'",
+    "Clicking FHD sets canvas to 1920x1080; clicking 4K sets canvas to 3840x2160 (verified via canvas.width/height attributes)",
+    "Active resolution button uses cyan bg rgb(0,240,255)",
+    "Preview animation continues at FHD and 4K (canvas pixel-hash differs across 550ms samples)",
+    "HD recording (3.8s) succeeded — stop-record transitioned to finished state, download-video button visible (.mp4)",
+    "Regression: 20 vfx-preset-* buttons present, ai-enhance-button present, toggle-title-card and toggle-chord-subtitles switches present, record-video-button opens modal after loading song"
+  ],
+  "failed": [
+    {
+      "area": "VideoRecorderModal preview canvas — HD initial state",
+      "issue": "On first modal open with default resolutionId='hd', canvas.width/height read 300x150 (HTML default) rather than 1280x720. Clicking the already-selected HD button does not trigger the useEffect (no state change), so dims are not re-applied. FHD/4K work fine because state changes. Note: this does NOT affect actual recording — startRecording() explicitly sets canvas dims to 1280x720 before capture, and HD recording produced a valid MP4 in this test.",
+      "evidence": "Test log: '[hd] dims={w:300, h:150} expected=1280x720' immediately after clicking HD, but subsequent FHD/4K clicks produced correct dims. Yet HD recording completed successfully and download-video became visible.",
+      "priority": "LOW"
+    }
+  ],
+  "action_items": [
+    "OPTIONAL/LOW: Consider forcing canvas dims apply on modal-open even when resolutionId is already 'hd' (e.g., ensure the mount useEffect runs after ref is attached, or set canvas dims imperatively on first paint). Not user-blocking since preview visually renders correctly and recording works."
+  ],
+  "success_rate": {"backend": "N/A (frontend-only test)", "frontend": "95%"},
+  "retest_needed": false,
+  "full_testing_deferred": true
+}

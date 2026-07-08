@@ -20,12 +20,21 @@ import {
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
-const CANVAS_W = 1280;
-const CANVAS_H = 720;
-const PIANO_H = 160;
-const NOTES_H = CANVAS_H - PIANO_H;
+const RESOLUTIONS = [
+  { id: "hd",  label: "HD 720p",   width: 1280, height: 720,  bitrate: 5_000_000,  fps: 30 },
+  { id: "fhd", label: "FHD 1080p", width: 1920, height: 1080, bitrate: 8_000_000,  fps: 30 },
+  { id: "4k",  label: "4K 2160p",  width: 3840, height: 2160, bitrate: 20_000_000, fps: 24 },
+];
+
 const LOOKAHEAD = 4;
 const INTRO_DURATION = 2.5;
+
+// piano occupies bottom ~22% of the canvas; notes above
+function dimsForResolution(id) {
+  const res = RESOLUTIONS.find((r) => r.id === id) || RESOLUTIONS[0];
+  const pianoH = Math.round(res.height * 0.22);
+  return { w: res.width, h: res.height, pianoH, notesH: res.height - pianoH, fps: res.fps, bitrate: res.bitrate };
+}
 
 export default function VideoRecorderModal({ open, onOpenChange, song, sampler, trackColors }) {
   const canvasRef = useRef(null);
@@ -41,6 +50,8 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
   const [aiTagline, setAiTagline] = useState("");
   const [showTitleCard, setShowTitleCard] = useState(true);
   const [showSubtitles, setShowSubtitles] = useState(true);
+  const [resolutionId, setResolutionId] = useState("hd");
+  const dimsRef = useRef(dimsForResolution("hd"));
 
   // playback engine state refs
   const playStartRef = useRef(0);
@@ -80,8 +91,10 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
     const canvas = canvasRef.current;
     if (!canvas) return;
     const ctx = canvas.getContext("2d");
-    canvas.width = CANVAS_W;
-    canvas.height = CANVAS_H;
+    const dims = dimsForResolution(resolutionId);
+    dimsRef.current = dims;
+    canvas.width = dims.w;
+    canvas.height = dims.h;
 
     let previewT = 0;
     const previewActive = new Map();
@@ -99,13 +112,13 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
       } else {
         [60, 64, 67, 72].forEach((m) => (previewT % 2 < 1 ? previewActive.set(m, { hand: "right", track: "0" }) : null));
       }
-      renderFrame(ctx, chosen, previewT, previewT % (song?.duration || 4), song, previewActive, [], null);
+      renderFrame(ctx, chosen, previewT, previewT % (song?.duration || 4), song, previewActive, [], null, dims);
       if (state !== "recording") rafRef.current = requestAnimationFrame(previewLoop);
     };
     rafRef.current = requestAnimationFrame(previewLoop);
     return () => cancelAnimationFrame(rafRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, preset, song?.id]);
+  }, [open, preset, song?.id, resolutionId]);
 
   const startRecording = async () => {
     if (!song || !song.notes?.length) {
@@ -125,7 +138,11 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
 
     const canvas = canvasRef.current;
     const ctx = canvas.getContext("2d");
-    const recorder = createVideoRecorder(canvas, { fps: 30 });
+    const dims = dimsForResolution(resolutionId);
+    dimsRef.current = dims;
+    canvas.width = dims.w;
+    canvas.height = dims.h;
+    const recorder = createVideoRecorder(canvas, { fps: dims.fps, bitrate: dims.bitrate });
     recorderRef.current = recorder;
     setVideoExt(recorder.fileExtension);
 
@@ -164,8 +181,8 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
           activeReleasesRef.current.push({ midi: n.midi, endsAt: songTime + n.duration });
           // Particles at key position (colored by track)
           const xFrac = keyXFractionCanvas(n.midi);
-          const px = xFrac * CANVAS_W;
-          const py = NOTES_H;
+          const px = xFrac * dimsRef.current.w;
+          const py = dimsRef.current.notesH;
           const tc = trackColors?.[trackId];
           spawnParticles(particlesRef.current, px, py, chosen.particle, tc || chosen.palette[0]);
           noteIdxRef.current++;
@@ -191,7 +208,7 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
         chords: song.chords || [],
         trackColors: trackColors || {},
       };
-      renderFrame(ctx, chosen, elapsed, songTime, song, activeKeysRef.current, particlesRef.current, overlay);
+      renderFrame(ctx, chosen, elapsed, songTime, song, activeKeysRef.current, particlesRef.current, overlay, dimsRef.current);
 
       if (elapsed >= duration) {
         stopRecording();
@@ -267,9 +284,29 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
-          {/* AI Enhance panel */}
+          {/* Resolution + AI Enhance panel */}
           <div className="glass-bright rounded-xl p-3 flex flex-wrap items-center gap-3" data-testid="ai-enhance-panel">
             <div className="flex items-center gap-2">
+              <span className="text-[10px] uppercase tracking-[0.2em] text-white/60">Quality</span>
+              <div className="flex gap-1" data-testid="resolution-picker">
+                {RESOLUTIONS.map((r) => (
+                  <button
+                    key={r.id}
+                    onClick={() => setResolutionId(r.id)}
+                    disabled={state === "recording"}
+                    className={`px-2.5 h-8 rounded text-[11px] uppercase tracking-wider transition-all border ${
+                      resolutionId === r.id
+                        ? "bg-[#00F0FF] text-black border-[#00F0FF]"
+                        : "border-white/15 text-white/70 hover:border-[#00F0FF] hover:text-[#00F0FF]"
+                    } disabled:opacity-40`}
+                    data-testid={`resolution-${r.id}`}
+                  >
+                    {r.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center gap-2 border-l border-white/10 pl-3">
               <Wand2 size={13} className="text-yellow-300" />
               <span className="text-[10px] uppercase tracking-[0.2em] text-white/60">AI</span>
             </div>
@@ -408,8 +445,10 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
 }
 
 // ------------------- Frame renderer -------------------
-function renderFrame(ctx, preset, timeAbs, currentTime, song, activeKeys, particles, overlay) {
-  const w = CANVAS_W, h = CANVAS_H;
+function renderFrame(ctx, preset, timeAbs, currentTime, song, activeKeys, particles, overlay, dims) {
+  const w = dims.w, h = dims.h;
+  const NOTES_H = dims.notesH;
+  const PIANO_H = dims.pianoH;
   const tracksColors = overlay?.trackColors || {};
 
   // Beat shake + zoom on beat
@@ -494,6 +533,7 @@ function renderFrame(ctx, preset, timeAbs, currentTime, song, activeKeys, partic
     const fadeIn = Math.min(1, t / 0.4);
     const fadeOut = Math.min(1, (overlay.introDur - t) / 0.5);
     const alpha = Math.max(0, Math.min(fadeIn, fadeOut));
+    const scale = h / 720;
     ctx.save();
     ctx.fillStyle = `rgba(0,0,0,${0.55 * alpha})`;
     ctx.fillRect(0, 0, w, h);
@@ -501,13 +541,13 @@ function renderFrame(ctx, preset, timeAbs, currentTime, song, activeKeys, partic
     ctx.textAlign = "center";
     ctx.fillStyle = preset.palette[0];
     ctx.shadowColor = preset.palette[0];
-    ctx.shadowBlur = 30;
-    ctx.font = "bold 88px 'Unbounded', sans-serif";
-    ctx.fillText(overlay.title || "", w / 2, h / 2 - 20);
-    ctx.shadowBlur = 12;
-    ctx.font = "24px monospace";
+    ctx.shadowBlur = 30 * scale;
+    ctx.font = `bold ${Math.round(88 * scale)}px 'Unbounded', sans-serif`;
+    ctx.fillText(overlay.title || "", w / 2, h / 2 - 20 * scale);
+    ctx.shadowBlur = 12 * scale;
+    ctx.font = `${Math.round(24 * scale)}px monospace`;
     ctx.fillStyle = "#ffffff";
-    if (overlay.tagline) ctx.fillText(overlay.tagline, w / 2, h / 2 + 40);
+    if (overlay.tagline) ctx.fillText(overlay.tagline, w / 2, h / 2 + 40 * scale);
     ctx.restore();
   }
 
@@ -516,15 +556,16 @@ function renderFrame(ctx, preset, timeAbs, currentTime, song, activeKeys, partic
     const st = overlay.songTime;
     const active = [...overlay.chords].reverse().find((c) => c.time <= st);
     if (active) {
+      const scale = h / 720;
       ctx.save();
       ctx.textAlign = "center";
-      ctx.font = "bold 42px 'Unbounded', sans-serif";
+      ctx.font = `bold ${Math.round(42 * scale)}px 'Unbounded', sans-serif`;
       ctx.fillStyle = "rgba(0,0,0,0.55)";
-      ctx.fillRect(w / 2 - 120, NOTES_H - 70, 240, 50);
+      ctx.fillRect(w / 2 - 120 * scale, NOTES_H - 70 * scale, 240 * scale, 50 * scale);
       ctx.fillStyle = preset.palette[0];
       ctx.shadowColor = preset.palette[0];
-      ctx.shadowBlur = 20;
-      ctx.fillText(active.name, w / 2, NOTES_H - 32);
+      ctx.shadowBlur = 20 * scale;
+      ctx.fillText(active.name, w / 2, NOTES_H - 32 * scale);
       ctx.restore();
     }
   }
