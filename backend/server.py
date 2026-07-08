@@ -6,6 +6,7 @@ import os
 import logging
 import json
 import re
+import hashlib
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional, Any
@@ -40,7 +41,9 @@ class Song(BaseModel):
     name: str
     duration: float
     notes: List[Note]
+    chords: List[dict] = Field(default_factory=list)
     source: str = "upload"  # 'upload' | 'demo'
+    difficulty: Optional[str] = None
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
@@ -48,7 +51,9 @@ class SongCreate(BaseModel):
     name: str
     duration: float
     notes: List[Note]
+    chords: List[dict] = Field(default_factory=list)
     source: str = "upload"
+    difficulty: Optional[str] = None
 
 
 class Settings(BaseModel):
@@ -190,9 +195,23 @@ async def update_settings(payload: Settings):
 
 
 # ---------- LLM-based MIDI refinement ----------
+REFINE_VERSION = "v2"
+
+
 class RefineRequest(BaseModel):
     notes: List[Note]
     name: Optional[str] = None
+    difficulty: str = "intermediate"  # 'beginner' | 'intermediate' | 'advanced'
+    force_refresh: bool = False
+
+
+class Chord(BaseModel):
+    time: float
+    name: str  # e.g. "Cmaj", "Am", "F/A"
+
+
+class EditSongRequest(BaseModel):
+    notes: List[Note]
 
 
 MAX_LLM_NOTES = 500
@@ -200,12 +219,10 @@ MAX_LLM_NOTES = 500
 
 def _extract_json(text: str) -> dict:
     """Best-effort JSON extraction from LLM response."""
-    # Try direct parse first
     try:
         return json.loads(text)
     except Exception:
         pass
-    # Try to find first {...} block
     match = re.search(r"\{.*\}", text, re.DOTALL)
     if match:
         try:
@@ -215,11 +232,50 @@ def _extract_json(text: str) -> dict:
     return {}
 
 
-async def _classify_hands(notes: List[dict]) -> dict:
-    """Send notes to Claude and get back {right: [i,...], left: [i,...], drop: [i,...]}."""
+def _refine_cache_key(notes: List[dict], difficulty: str) -> str:
+    canonical = json.dumps(
+        [
+            {
+                "m": n["midi"],
+                "t": round(n["time"], 3),
+                "d": round(n["duration"], 3),
+                "v": round(n["velocity"], 2),
+            }
+            for n in notes
+        ],
+        separators=(",", ":"),
+        sort_keys=True,
+    )
+    payload = f"{REFINE_VERSION}|{difficulty}|{canonical}"
+    return hashlib.sha256(payload.encode()).hexdigest()
+
+
+DIFFICULTY_INSTRUCTIONS = {
+    "beginner": (
+        "TARGET LEVEL: BEGINNER pianist.\n"
+        "- Right hand MUST contain only the primary single-note melody (top voice).\n"
+        "- Left hand MUST be simplified to at most 1 note per chord (root note only). Drop inner voices.\n"
+        "- Drop grace notes, trills, and any dense passing runs. Merge notes shorter than 200ms into the nearest longer note.\n"
+        "- Drop up to 30% of the notes to keep the arrangement easy to play."
+    ),
+    "intermediate": (
+        "TARGET LEVEL: INTERMEDIATE pianist.\n"
+        "- Right hand keeps the melody with light ornaments.\n"
+        "- Left hand keeps 2-3 note chord voicings; drop dense inner voices.\n"
+        "- Drop clear noise/artifacts. Drop up to 20% of notes."
+    ),
+    "advanced": (
+        "TARGET LEVEL: ADVANCED pianist.\n"
+        "- Preserve the piece as-is; only drop clearly-erroneous artifacts (spurious very-short blips, out-of-key single-frame detections).\n"
+        "- Keep the full harmonic content. Drop no more than 10% of notes."
+    ),
+}
+
+
+async def _classify_hands(notes: List[dict], difficulty: str) -> dict:
+    """Send notes to Claude and get back {right, left, drop, chords}."""
     from emergentintegrations.llm.chat import LlmChat, UserMessage
 
-    # Build compact serialization: each line "index midi time duration velocity"
     lines = []
     for i, n in enumerate(notes):
         lines.append(
@@ -227,20 +283,23 @@ async def _classify_hands(notes: List[dict]) -> dict:
         )
     notes_block = "\n".join(lines)
 
+    diff_key = difficulty if difficulty in DIFFICULTY_INSTRUCTIONS else "intermediate"
+    diff_prompt = DIFFICULTY_INSTRUCTIONS[diff_key]
+
     system_message = (
-        "You are a piano-music-theory assistant. You will receive a list of detected note events from an audio-to-MIDI extraction. "
-        "Each line is: `index midi time duration velocity`. Time is in seconds. MIDI 60 = middle C (C4). "
-        "Your job:\n"
-        "1. Classify EVERY note into either 'right' (melody / higher voice, usually MIDI >= 60) or 'left' (bass / chords / accompaniment, usually MIDI < 60).\n"
-        "2. Identify obvious noise/artifacts (very short isolated notes, out-of-key single blips) and put their indices in 'drop'.\n"
-        "3. Do NOT drop more than 15% of the notes.\n"
-        "4. Group left-hand notes that start within 60ms of each other and share a common time — treat these as chords, both hands unchanged in output.\n\n"
-        "Return ONLY a JSON object with this exact shape, no prose, no markdown:\n"
-        '{"right": [int, ...], "left": [int, ...], "drop": [int, ...]}\n'
-        "Every input index must appear in exactly one of the three arrays."
+        "You are an expert piano-music-theory assistant. You will receive detected note events from audio-to-MIDI extraction.\n"
+        "Each line is: `index midi time duration velocity`. Time is in seconds. MIDI 60 = middle C (C4).\n\n"
+        f"{diff_prompt}\n\n"
+        "Your tasks:\n"
+        "1. Classify each retained note into 'right' (melody, usually MIDI >= 60) or 'left' (bass/chord accompaniment, usually MIDI < 60).\n"
+        "2. Put noise/mistake indices into 'drop'. Also drop notes per the difficulty rules above.\n"
+        "3. Detect the chord progression as {time_seconds, chord_name} entries. Chord names use standard notation like 'Cmaj', 'Am', 'G7', 'F/A', 'Dm7'. Return 4-30 chords depending on piece length. Chords should be time-ordered.\n"
+        "4. Every input index must appear in exactly one of right/left/drop.\n\n"
+        "Return ONLY a JSON object, no prose, no markdown:\n"
+        '{"right": [int, ...], "left": [int, ...], "drop": [int, ...], "chords": [{"time": number, "name": string}, ...]}'
     )
 
-    user_text = f"Total notes: {len(notes)}\n\nNotes:\n{notes_block}"
+    user_text = f"Total notes: {len(notes)}\nDifficulty: {diff_key}\n\nNotes:\n{notes_block}"
 
     chat = LlmChat(
         api_key=EMERGENT_LLM_KEY,
@@ -257,34 +316,46 @@ async def _classify_hands(notes: List[dict]) -> dict:
 
 @api_router.post("/refine-midi")
 async def refine_midi(payload: RefineRequest):
-    """Use Claude Sonnet 4.6 to tag notes with left/right hand and drop noise."""
+    """Use Claude Sonnet 4.6 to tag notes with left/right hand, drop noise, detect chords. Cached by content-hash."""
     if not EMERGENT_LLM_KEY:
         raise HTTPException(500, "LLM key not configured")
 
     original = [n.model_dump() for n in payload.notes]
     if not original:
-        return {"notes": [], "stats": {"input": 0, "output": 0, "dropped": 0, "refined": False}}
+        return {"notes": [], "chords": [], "stats": {"input": 0, "output": 0, "dropped": 0, "refined": False, "cached": False}}
 
-    # If too many notes, refine first MAX and pass rest through with heuristic hand
+    difficulty = payload.difficulty or "intermediate"
+    cache_key = _refine_cache_key(original, difficulty)
+
+    if not payload.force_refresh:
+        cached = await db.midi_refinements.find_one({"key": cache_key}, {"_id": 0})
+        if cached:
+            return {
+                "notes": cached["notes"],
+                "chords": cached.get("chords", []),
+                "stats": {**cached.get("stats", {}), "cached": True},
+            }
+
     to_llm = original[:MAX_LLM_NOTES]
     passthrough = original[MAX_LLM_NOTES:]
 
     try:
-        classification = await _classify_hands(to_llm)
+        classification = await _classify_hands(to_llm, difficulty)
     except Exception as e:
         logger.warning(f"LLM refinement failed, using heuristic fallback: {e}")
-        classification = {"right": [], "left": [], "drop": []}
+        classification = {"right": [], "left": [], "drop": [], "chords": []}
         for i, n in enumerate(to_llm):
             (classification["right"] if n["midi"] >= 60 else classification["left"]).append(i)
 
     right_set = set(classification.get("right", []) or [])
     left_set = set(classification.get("left", []) or [])
     drop_set = set(classification.get("drop", []) or [])
+    chords_raw = classification.get("chords", []) or []
 
-    # Enforce drop cap: max 15% of to_llm
-    drop_cap = max(0, int(len(to_llm) * 0.15))
+    # Difficulty-aware drop cap
+    drop_cap_pct = {"beginner": 0.30, "intermediate": 0.20, "advanced": 0.10}.get(difficulty, 0.20)
+    drop_cap = max(0, int(len(to_llm) * drop_cap_pct))
     if len(drop_set) > drop_cap:
-        # keep only the first drop_cap in original order
         drop_set = set(list(drop_set)[:drop_cap])
 
     refined: List[dict] = []
@@ -299,22 +370,62 @@ async def refine_midi(payload: RefineRequest):
             n["hand"] = "left" if n["midi"] < 60 else "right"
         refined.append(n)
 
-    # Passthrough beyond MAX (simple heuristic hand)
     for n in passthrough:
         n["hand"] = "left" if n["midi"] < 60 else "right"
         refined.append(n)
 
     refined.sort(key=lambda x: (x["time"], x["midi"]))
 
-    return {
-        "notes": refined,
-        "stats": {
-            "input": len(original),
-            "output": len(refined),
-            "dropped": len(original) - len(refined),
-            "refined": True,
-        },
+    # Clean up chords
+    chords: List[dict] = []
+    for c in chords_raw:
+        try:
+            t = float(c.get("time"))
+            name = str(c.get("name", "")).strip()
+            if name:
+                chords.append({"time": t, "name": name[:12]})
+        except Exception:
+            continue
+    chords.sort(key=lambda c: c["time"])
+
+    stats = {
+        "input": len(original),
+        "output": len(refined),
+        "dropped": len(original) - len(refined),
+        "refined": True,
+        "difficulty": difficulty,
+        "cached": False,
     }
+
+    # Cache
+    await db.midi_refinements.update_one(
+        {"key": cache_key},
+        {"$set": {
+            "key": cache_key,
+            "notes": refined,
+            "chords": chords,
+            "stats": stats,
+            "created_at": datetime.now(timezone.utc).isoformat(),
+        }},
+        upsert=True,
+    )
+
+    return {"notes": refined, "chords": chords, "stats": stats}
+
+
+@api_router.put("/songs/{song_id}")
+async def update_song(song_id: str, payload: EditSongRequest):
+    """Update the notes of a saved song (used by the MIDI editor)."""
+    notes = [n.model_dump() for n in payload.notes]
+    duration = max((n["time"] + n["duration"] for n in notes), default=1.0) + 1
+    result = await db.songs.update_one(
+        {"id": song_id},
+        {"$set": {"notes": notes, "duration": duration}},
+    )
+    if result.matched_count == 0:
+        raise HTTPException(404, "Song not found")
+    doc = await db.songs.find_one({"id": song_id}, {"_id": 0})
+    return doc
 
 
 app.include_router(api_router)

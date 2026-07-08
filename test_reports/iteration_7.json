@@ -1,0 +1,26 @@
+{
+  "summary": "Smoke tested iter-7: LLM cache, difficulty-aware refinement, chords, PUT /songs/{id}, toolbar (difficulty/practice/reprocess/edit), MIDI editor overlay + shift, chord strip. All primary flows working.",
+  "tested_scope": ["backend", "frontend", "integration"],
+  "passed": [
+    "POST /api/refine-midi 1st call returned cached=false, output notes, chords array (5 entries, first: {time:0,name:'Cmaj'})",
+    "POST /api/refine-midi 2nd identical call returned cached=true in 0.11s (vs 2.6s first)",
+    "Different difficulty (beginner) re-ran LLM: cached=false, output=7 (< advanced output=8)",
+    "difficulty='advanced' cached=false, output=8 (beginner<advanced confirmed)",
+    "force_refresh=true bypasses cache (cached=false)",
+    "POST /api/songs accepts and persists chords array (chords_saved=1)",
+    "PUT /api/songs/{id} updates notes, GET /api/songs/{id} confirms new notes (midi:72, count:1)",
+    "Frontend loads on public URL, toolbar visible after selecting song",
+    "All toolbar testids present: difficulty-{beginner,intermediate,advanced}, practice-{both,right,left}, reprocess-button, edit-toggle",
+    "difficulty-beginner click applies active highlight class (bg-[#00F0FF])",
+    "practice-right click applies highlight class; practice-both restores",
+    "Edit mode: edit-toolbar visible, midi-editor-overlay present, all edit testids (selected-note-label, shift-semitone-up/down, shift-octave-up/down, delete-note, global-shift-up/down, edit-cancel, edit-save) present",
+    "Clicking edit-note-0 selects note showing 'C5'; shift-semitone-up changes label to 'C#5'",
+    "edit-cancel exits edit mode (edit-toolbar hidden)",
+    "chord-label-* rendered in chord strip for song with chords (count=1)"
+  ],
+  "failed": [],
+  "action_items": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "retest_needed": false,
+  "full_testing_deferred": true
+}

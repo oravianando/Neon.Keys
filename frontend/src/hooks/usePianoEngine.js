@@ -4,11 +4,12 @@ import * as Tone from "tone";
 /*
   usePianoEngine: manages Tone.js sampler, playback timing, active keys.
 */
-export function usePianoEngine({ volume = 0.8, sustain = false } = {}) {
+export function usePianoEngine({ volume = 0.8, sustain = false, practiceMode = "both" } = {}) {
   const samplerRef = useRef(null);
   const [ready, setReady] = useState(false);
   const [activeKeys, setActiveKeys] = useState(new Set());
   const activeKeysRef = useRef(new Set());
+  const practiceModeRef = useRef(practiceMode);
 
   const songRef = useRef(null);
   const noteIdxRef = useRef(0);
@@ -60,6 +61,11 @@ export function usePianoEngine({ volume = 0.8, sustain = false } = {}) {
     }
   }, [sustain]);
 
+  // Update practice mode ref
+  useEffect(() => {
+    practiceModeRef.current = practiceMode;
+  }, [practiceMode]);
+
   const setActive = useCallback((midi, on) => {
     if (on) activeKeysRef.current.add(midi);
     else activeKeysRef.current.delete(midi);
@@ -96,18 +102,24 @@ export function usePianoEngine({ volume = 0.8, sustain = false } = {}) {
       song.notes[noteIdxRef.current].time <= elapsed
     ) {
       const n = song.notes[noteIdxRef.current];
-      const noteName = Tone.Frequency(n.midi, "midi").toNote();
-      const dur = Math.max(n.duration / speedRef.current, 0.08);
-      try {
-        samplerRef.current?.triggerAttackRelease(noteName, dur, undefined, n.velocity);
-      } catch (err) {
-        console.warn("scheduled note failed", err);
+      const mode = practiceModeRef.current;
+      const skip =
+        (mode === "right" && n.hand === "left") ||
+        (mode === "left" && n.hand === "right");
+      if (!skip) {
+        const noteName = Tone.Frequency(n.midi, "midi").toNote();
+        const dur = Math.max(n.duration / speedRef.current, 0.08);
+        try {
+          samplerRef.current?.triggerAttackRelease(noteName, dur, undefined, n.velocity);
+        } catch (err) {
+          console.warn("scheduled note failed", err);
+        }
+        setActive(n.midi, true);
+        activeReleasesRef.current.push({
+          midi: n.midi,
+          endsAt: elapsed + n.duration,
+        });
       }
-      setActive(n.midi, true);
-      activeReleasesRef.current.push({
-        midi: n.midi,
-        endsAt: elapsed + n.duration,
-      });
       noteIdxRef.current++;
     }
 

@@ -12,16 +12,19 @@ export default function RollingNotes({
   lookahead = 4,
   noteColor = "cyan",
   keyRects,
+  practiceMode = "both",
 }) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const currentTimeRef = useRef(currentTime);
   const songRef = useRef(song);
   const keyRectsRef = useRef(keyRects);
+  const practiceModeRef = useRef(practiceMode);
 
   useEffect(() => { currentTimeRef.current = currentTime; }, [currentTime]);
   useEffect(() => { songRef.current = song; }, [song]);
   useEffect(() => { keyRectsRef.current = keyRects; }, [keyRects]);
+  useEffect(() => { practiceModeRef.current = practiceMode; }, [practiceMode]);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -92,6 +95,12 @@ export default function RollingNotes({
         const relEnd = n.time + n.duration - t;
         if (relEnd < 0 || relStart > lookahead) continue;
 
+        // Practice mode: dim other-hand notes rather than hiding
+        const mode = practiceModeRef.current;
+        const dimmed =
+          (mode === "right" && n.hand === "left") ||
+          (mode === "left" && n.hand === "right");
+
         const rect = rects[n.midi];
         if (!rect) continue;
 
@@ -120,7 +129,8 @@ export default function RollingNotes({
 
         // Draw glow
         ctx.shadowColor = color;
-        ctx.shadowBlur = 16;
+        ctx.shadowBlur = dimmed ? 4 : 16;
+        ctx.globalAlpha = dimmed ? 0.18 : 1;
         ctx.fillStyle = color;
         roundRect(ctx, x + 1, noteY, noteW, noteH, 4);
         ctx.fill();
@@ -130,6 +140,7 @@ export default function RollingNotes({
         ctx.fillStyle = "rgba(255,255,255,0.35)";
         roundRect(ctx, x + 2, noteY + 2, Math.max(1, noteW - 4), Math.max(1, noteH - 4), 3);
         ctx.fill();
+        ctx.globalAlpha = 1;
       }
 
       raf = requestAnimationFrame(draw);

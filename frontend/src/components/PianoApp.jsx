@@ -9,6 +9,9 @@ import SettingsPanel from "@/components/SettingsPanel";
 import { usePianoEngine } from "@/hooks/usePianoEngine";
 import { parseMidiFile } from "@/lib/midiParse";
 import { convertAudioToMidi } from "@/lib/audioToMidi";
+import ChordStrip from "@/components/ChordStrip";
+import ToolBar from "@/components/ToolBar";
+import { MidiEditorOverlay, EditToolbar } from "@/components/MidiEditor";
 import { toast } from "sonner";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -20,6 +23,8 @@ const DEFAULT_SETTINGS = {
   note_color: "cyan",
   sustain: false,
   lookahead: 4.0,
+  difficulty: "intermediate",
+  practice_mode: "both",
 };
 
 export default function PianoApp() {
@@ -31,6 +36,11 @@ export default function PianoApp() {
   const [converting, setConverting] = useState(null);
   const [audioUrls, setAudioUrls] = useState({}); // songId -> Blob URL
   const [playingOriginal, setPlayingOriginal] = useState(false);
+  const [reprocessing, setReprocessing] = useState(false);
+  const [editMode, setEditMode] = useState(false);
+  const [selectedNoteIdx, setSelectedNoteIdx] = useState(null);
+  const [editSnapshot, setEditSnapshot] = useState(null);
+  const [savingEdit, setSavingEdit] = useState(false);
   const audioElRef = useRef(null);
   const keyElsRef = useRef({});
   const boardWrapRef = useRef(null);
@@ -38,6 +48,7 @@ export default function PianoApp() {
   const engine = usePianoEngine({
     volume: settings.volume,
     sustain: settings.sustain,
+    practiceMode: settings.practice_mode,
   });
 
   // Load demo songs, user songs, settings on mount
@@ -155,25 +166,31 @@ export default function PianoApp() {
           });
           // AI refinement: hand classification + noise removal via Claude Sonnet 4.6
           if (parsed.notes.length > 0) {
-            setConverting({ stage: "AI cleaning (chords/hands)", percent: 0 });
+            setConverting({ stage: `AI cleaning (${settings.difficulty})`, percent: 0 });
             try {
               const refineRes = await axios.post(
                 `${API}/refine-midi`,
-                { notes: parsed.notes, name: parsed.name },
-                { timeout: 90000 },
+                {
+                  notes: parsed.notes,
+                  name: parsed.name,
+                  difficulty: settings.difficulty,
+                },
+                { timeout: 120000 },
               );
               parsed.notes = refineRes.data.notes;
+              parsed.chords = refineRes.data.chords || [];
+              parsed.difficulty = settings.difficulty;
               const stats = refineRes.data.stats || {};
               if (stats.refined) {
                 toast.success(
-                  `AI refined ${stats.input} → ${stats.output} notes (${stats.dropped || 0} removed)`,
+                  `AI refined ${stats.input} → ${stats.output} notes${stats.cached ? " (cached)" : ""}`,
                 );
               }
             } catch (err) {
               console.warn("LLM refinement failed, using unrefined notes", err);
               toast.warning("AI refinement skipped — using raw MIDI");
             }
-            setConverting({ stage: "AI cleaning (chords/hands)", percent: 100 });
+            setConverting({ stage: "AI cleaning", percent: 100 });
           }
           if (parsed.notes.length === 0) {
             toast.warning("No notes detected. Try a clearer melodic recording.");
@@ -198,7 +215,9 @@ export default function PianoApp() {
           name: parsed.name,
           duration: parsed.duration,
           notes: parsed.notes,
+          chords: parsed.chords || [],
           source: "upload",
+          difficulty: parsed.difficulty || settings.difficulty,
         });
         const saved = res.data;
         setUserSongs((prev) => [saved, ...prev]);
@@ -217,7 +236,7 @@ export default function PianoApp() {
         handleSelectSong(parsed);
       }
     },
-    [handleSelectSong],
+    [handleSelectSong, settings.difficulty],
   );
 
   const handleDelete = useCallback(async (song) => {
@@ -248,6 +267,147 @@ export default function PianoApp() {
     }
     await engine.play();
   };
+
+  // ---------- Reprocess ----------
+  const handleReprocess = useCallback(async () => {
+    if (!currentSong || !currentSong.notes?.length) {
+      toast.info("Select a song with notes first");
+      return;
+    }
+    setReprocessing(true);
+    try {
+      engine.pause();
+      const res = await axios.post(
+        `${API}/refine-midi`,
+        {
+          notes: currentSong.notes.map((n) => ({
+            midi: n.midi, time: n.time, duration: n.duration, velocity: n.velocity,
+          })),
+          name: currentSong.name,
+          difficulty: settings.difficulty,
+          force_refresh: true,
+        },
+        { timeout: 120000 },
+      );
+      const newNotes = res.data.notes;
+      const newChords = res.data.chords || [];
+      const updated = {
+        ...currentSong,
+        notes: newNotes,
+        chords: newChords,
+        difficulty: settings.difficulty,
+      };
+      // Persist to backend (if it's a saved song)
+      try {
+        await axios.put(`${API}/songs/${currentSong.id}`, { notes: newNotes });
+      } catch (e) {
+        console.warn("Could not persist reprocessed notes", e);
+      }
+      setCurrentSong(updated);
+      setUserSongs((prev) => prev.map((s) => (s.id === updated.id ? { ...s, ...updated } : s)));
+      engine.loadSong(updated);
+      const stats = res.data.stats || {};
+      toast.success(`Reprocessed (${settings.difficulty}): ${stats.input} → ${stats.output} notes`);
+    } catch (err) {
+      console.error("Reprocess failed", err);
+      toast.error("Reprocess failed");
+    } finally {
+      setReprocessing(false);
+    }
+  }, [currentSong, engine, settings.difficulty]);
+
+  // ---------- Edit Mode ----------
+  const enterEditMode = useCallback(() => {
+    if (!currentSong) {
+      toast.info("Select a song to edit");
+      return;
+    }
+    engine.pause();
+    engine.stop();
+    setEditSnapshot(JSON.parse(JSON.stringify(currentSong.notes)));
+    setSelectedNoteIdx(null);
+    setEditMode(true);
+  }, [currentSong, engine]);
+
+  const exitEditMode = useCallback((keepChanges = false) => {
+    if (!keepChanges && editSnapshot && currentSong) {
+      const restored = { ...currentSong, notes: editSnapshot };
+      setCurrentSong(restored);
+      engine.loadSong(restored);
+    }
+    setEditMode(false);
+    setSelectedNoteIdx(null);
+    setEditSnapshot(null);
+  }, [editSnapshot, currentSong, engine]);
+
+  const shiftNote = useCallback((delta) => {
+    if (selectedNoteIdx == null || !currentSong) return;
+    setCurrentSong((prev) => {
+      if (!prev) return prev;
+      const notes = prev.notes.map((n, i) => {
+        if (i !== selectedNoteIdx) return n;
+        const newMidi = Math.max(21, Math.min(108, n.midi + delta));
+        return { ...n, midi: newMidi };
+      });
+      const updated = { ...prev, notes };
+      engine.loadSong(updated);
+      return updated;
+    });
+    // Play the shifted note
+    const n = currentSong.notes[selectedNoteIdx];
+    if (n) engine.playNote(Math.max(21, Math.min(108, n.midi + delta)), 0.3, 0.7);
+  }, [selectedNoteIdx, currentSong, engine]);
+
+  const deleteSelectedNote = useCallback(() => {
+    if (selectedNoteIdx == null || !currentSong) return;
+    setCurrentSong((prev) => {
+      if (!prev) return prev;
+      const notes = prev.notes.filter((_, i) => i !== selectedNoteIdx);
+      const updated = { ...prev, notes };
+      engine.loadSong(updated);
+      return updated;
+    });
+    setSelectedNoteIdx(null);
+  }, [selectedNoteIdx, currentSong, engine]);
+
+  const globalShift = useCallback((delta) => {
+    if (!currentSong) return;
+    setCurrentSong((prev) => {
+      if (!prev) return prev;
+      const notes = prev.notes.map((n) => ({
+        ...n,
+        midi: Math.max(21, Math.min(108, n.midi + delta)),
+      }));
+      const updated = { ...prev, notes };
+      engine.loadSong(updated);
+      return updated;
+    });
+  }, [currentSong, engine]);
+
+  const saveEdits = useCallback(async () => {
+    if (!currentSong) return;
+    setSavingEdit(true);
+    try {
+      await axios.put(`${API}/songs/${currentSong.id}`, { notes: currentSong.notes });
+      setUserSongs((prev) => prev.map((s) => (s.id === currentSong.id ? { ...s, notes: currentSong.notes } : s)));
+      toast.success("Edits saved");
+      setEditSnapshot(null);
+      setEditMode(false);
+      setSelectedNoteIdx(null);
+    } catch (err) {
+      console.error("Save edits failed", err);
+      toast.error("Could not save edits");
+    } finally {
+      setSavingEdit(false);
+    }
+  }, [currentSong]);
+
+  const isDirty = editSnapshot
+    ? JSON.stringify(currentSong?.notes) !== JSON.stringify(editSnapshot)
+    : false;
+
+  const selectedNote =
+    selectedNoteIdx != null && currentSong?.notes?.[selectedNoteIdx];
 
   return (
     <div className="min-h-screen w-full bg-[#050505] text-white flex flex-col overflow-hidden relative">
@@ -318,18 +478,61 @@ export default function PianoApp() {
             data-testid="original-audio"
           />
 
+          {editMode ? (
+            <EditToolbar
+              selectedIdx={selectedNoteIdx}
+              selectedNote={selectedNote}
+              onShift={shiftNote}
+              onDelete={deleteSelectedNote}
+              onSave={saveEdits}
+              onCancel={() => exitEditMode(false)}
+              onGlobalShift={globalShift}
+              isDirty={isDirty}
+              saving={savingEdit}
+            />
+          ) : (
+            <ToolBar
+              difficulty={settings.difficulty}
+              onDifficultyChange={(d) => setSettings((prev) => ({ ...prev, difficulty: d }))}
+              practiceMode={settings.practice_mode}
+              onPracticeModeChange={(m) => setSettings((prev) => ({ ...prev, practice_mode: m }))}
+              onReprocess={handleReprocess}
+              reprocessing={reprocessing}
+              reprocessDisabled={!currentSong || !currentSong.notes?.length}
+              editMode={editMode}
+              onToggleEdit={editMode ? () => exitEditMode(false) : enterEditMode}
+              editDisabled={!currentSong}
+            />
+          )}
+
           {/* Rolling notes + piano stack */}
           <div ref={boardWrapRef} className="flex-1 min-h-[420px] flex flex-col relative rounded-2xl overflow-hidden border border-white/10">
             <div className="flex-1 relative">
+              <ChordStrip
+                chords={currentSong?.chords}
+                currentTime={engine.currentTime}
+                lookahead={settings.lookahead}
+              />
               <RollingNotes
                 song={currentSong}
                 currentTime={engine.currentTime}
                 lookahead={settings.lookahead}
                 noteColor={settings.note_color}
                 keyRects={keyRects}
+                practiceMode={settings.practice_mode}
               />
-              {currentSong && currentSong.notes?.some((n) => n.hand) && (
-                <div className="absolute top-3 right-3 glass rounded-lg px-3 py-2 flex items-center gap-3 text-[10px] uppercase tracking-widest z-10" data-testid="hand-legend">
+              {editMode && (
+                <MidiEditorOverlay
+                  song={currentSong}
+                  currentTime={engine.currentTime}
+                  lookahead={settings.lookahead}
+                  keyRects={keyRects}
+                  selectedIdx={selectedNoteIdx}
+                  onSelectIdx={setSelectedNoteIdx}
+                />
+              )}
+              {currentSong && currentSong.notes?.some((n) => n.hand) && !editMode && (
+                <div className="absolute top-10 right-3 glass rounded-lg px-3 py-2 flex items-center gap-3 text-[10px] uppercase tracking-widest z-10" data-testid="hand-legend">
                   <div className="flex items-center gap-1.5">
                     <span className="w-3 h-3 rounded-sm bg-[#00F0FF] shadow-[0_0_10px_rgba(0,240,255,0.7)]" />
                     <span className="text-white/70">Right</span>
