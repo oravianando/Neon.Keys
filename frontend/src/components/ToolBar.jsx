@@ -1,5 +1,5 @@
 import React from "react";
-import { Sparkles, RefreshCw, Pencil, Hand } from "lucide-react";
+import { Sparkles, RefreshCw, Pencil, Hand, Video } from "lucide-react";
 
 const DIFFICULTIES = [
   { id: "beginner", label: "Beginner" },
@@ -24,6 +24,8 @@ export default function ToolBar({
   editMode,
   onToggleEdit,
   editDisabled,
+  onRecordVideo,
+  recordDisabled,
 }) {
   return (
     <div className="glass-bright rounded-xl px-4 py-3 flex flex-wrap items-center gap-3" data-testid="toolbar">
@@ -91,6 +93,15 @@ export default function ToolBar({
           data-testid="edit-toggle"
         >
           <Pencil size={13} /> {editMode ? "Editing" : "Edit"}
+        </button>
+        <button
+          onClick={onRecordVideo}
+          disabled={recordDisabled}
+          className="flex items-center gap-1.5 px-3 h-8 rounded border border-[#FF00E6]/60 text-[#FF00E6] text-[11px] uppercase tracking-wider hover:bg-[#FF00E6] hover:text-black transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+          data-testid="record-video-button"
+          title="Create a video of this song"
+        >
+          <Video size={13} /> Video
         </button>
       </div>
     </div>

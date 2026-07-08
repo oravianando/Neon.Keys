@@ -226,5 +226,6 @@ export function usePianoEngine({ volume = 0.8, sustain = false, practiceMode = "
     stop,
     seek,
     setSpeed,
+    getSampler: () => samplerRef.current,
   };
 }

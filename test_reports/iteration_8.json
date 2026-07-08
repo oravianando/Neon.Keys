@@ -1,0 +1,29 @@
+{
+  "summary": "Video recording feature (iteration 8) tested end-to-end on live preview URL with Twinkle Twinkle Little Star. Toolbar record-video-button enables after song select, modal opens, all 20 VFX presets render with correct testids, active state highlight works, canvas animates on preset switch, MediaRecorder pipeline records for ~9.5s reaching 34% progress, stop yields blob preview + Download .mp4 button, Escape closes modal and toolbar remains functional.",
+  "tested_scope": ["frontend", "integration"],
+  "passed": [
+    "record-video-button visible and enabled after selecting Twinkle Twinkle Little Star",
+    "Clicking record-video-button opens video-recorder-modal",
+    "All 20 VFX preset testids present (neon-cyan, neon-pink, aurora, vaporwave, matrix, starfield, sunset, cyberpunk, fire, ice, galaxy, confetti, laser, monochrome, gold, hologram, underwater, storm, rainbow-flow, retro-arcade)",
+    "Selecting matrix preset toggles active bg-[#00F0FF] highlight and changes canvas rendering (screenshot bytes differ)",
+    "video-canvas element visible with 16:9 aspect",
+    "start-record hides and stop-record appears after click; record-progress updates from 5% -> 34% over ~10s",
+    "After stop: preview-video appears with blob: URL src; download-video button appears with text 'Download .mp4' (MediaRecorder in Chromium picked mp4)",
+    "Escape closes modal; toolbar remains visible; no crash / navigation lost"
+  ],
+  "failed": [
+    {
+      "area": "Preview animation (cosmetic)",
+      "issue": "Initial preview canvas screenshots 600ms apart for neon-cyan preset returned identical bytes (3048/3048). Animation did change on preset switch to matrix, so the RAF loop is running — likely the neon-cyan demo frame is nearly static / dark at t~0 (matches task note 'preview canvas may look dark for some presets').",
+      "evidence": "canvas animation (bytes differ): False on first preset; True after switching to matrix.",
+      "priority": "LOW"
+    }
+  ],
+  "action_items": [
+    "Optional: add aria-describedby to DialogContent to silence Radix warnings (non-functional)",
+    "Optional: make neon-cyan preview animate more visibly at t=0 so first-frame preview isn't near-static"
+  ],
+  "success_rate": {"backend": "N/A (frontend-only test)", "frontend": "100% (all critical acceptance checks passed)"},
+  "retest_needed": false,
+  "full_testing_deferred": true
+}

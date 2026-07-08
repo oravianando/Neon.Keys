@@ -12,6 +12,7 @@ import { convertAudioToMidi } from "@/lib/audioToMidi";
 import ChordStrip from "@/components/ChordStrip";
 import ToolBar from "@/components/ToolBar";
 import { MidiEditorOverlay, EditToolbar } from "@/components/MidiEditor";
+import VideoRecorderModal from "@/components/VideoRecorderModal";
 import { toast } from "sonner";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -41,6 +42,7 @@ export default function PianoApp() {
   const [selectedNoteIdx, setSelectedNoteIdx] = useState(null);
   const [editSnapshot, setEditSnapshot] = useState(null);
   const [savingEdit, setSavingEdit] = useState(false);
+  const [videoOpen, setVideoOpen] = useState(false);
   const audioElRef = useRef(null);
   const keyElsRef = useRef({});
   const boardWrapRef = useRef(null);
@@ -502,6 +504,8 @@ export default function PianoApp() {
               editMode={editMode}
               onToggleEdit={editMode ? () => exitEditMode(false) : enterEditMode}
               editDisabled={!currentSong}
+              onRecordVideo={() => { engine.pause(); setVideoOpen(true); }}
+              recordDisabled={!currentSong || !currentSong.notes?.length}
             />
           )}
 
@@ -568,6 +572,13 @@ export default function PianoApp() {
           </div>
         </section>
       </main>
+
+      <VideoRecorderModal
+        open={videoOpen}
+        onOpenChange={setVideoOpen}
+        song={currentSong}
+        sampler={engine.getSampler()}
+      />
     </div>
   );
 }
