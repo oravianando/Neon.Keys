@@ -1,4 +1,5 @@
 import React, { useEffect, useRef, useState } from "react";
+import { Play } from "lucide-react";
 import { chordNameToMidi, chordDisplayName } from "@/lib/chordParser";
 import { KEYS, isBlackKey } from "@/lib/piano";
 
@@ -8,10 +9,13 @@ import { KEYS, isBlackKey } from "@/lib/piano";
     • Chord name (large, neon)
     • Mini keyboard (2 octaves centered on middle C) with the chord's notes
       highlighted in the note-color, so learners see exactly which keys to press.
+    • Play button — triggers all chord tones via `onPlay(midiArray)` so the
+      user can hear the chord.
 
-  Positioned absolutely by its parent. Non-interactive (pointer-events: none).
+  Positioned absolutely by its parent. Overlay is non-interactive except for the
+  Play button, which sits at pointer-events: auto.
 */
-export default function ChordTutorial({ chords, currentTime, visible, noteColor = "#00F0FF" }) {
+export default function ChordTutorial({ chords, currentTime, visible, noteColor = "#00F0FF", onPlay }) {
   const [active, setActive] = useState(null);
   const lastNameRef = useRef(null);
 
@@ -20,7 +24,6 @@ export default function ChordTutorial({ chords, currentTime, visible, noteColor 
       if (active) setActive(null);
       return;
     }
-    // Find latest chord whose time <= currentTime
     let picked = null;
     for (const c of chords) {
       if (c.time <= currentTime + 0.05) picked = c;
@@ -38,22 +41,24 @@ export default function ChordTutorial({ chords, currentTime, visible, noteColor 
   const midis = chordNameToMidi(active.name);
   if (!midis || midis.length === 0) return null;
 
-  // Show 2 octaves centered on C4 (MIDI 60): keys from C3 (48) to C5 (72) inclusive
   const start = 48;
   const end = 72;
   const chordSet = new Set(midis);
   const whiteKeys = KEYS.filter((k) => !k.black && k.midi >= start && k.midi <= end);
 
+  const handlePlay = (e) => {
+    e.stopPropagation();
+    if (onPlay) onPlay(midis);
+  };
+
   return (
     <div
       className="pointer-events-none absolute left-1/2 -translate-x-1/2 top-2 z-30 select-none flex flex-col items-center gap-2 animate-fade-in"
-      style={{
-        filter: "drop-shadow(0 4px 20px rgba(0,0,0,0.5))",
-      }}
+      style={{ filter: "drop-shadow(0 4px 20px rgba(0,0,0,0.5))" }}
       data-testid="chord-tutorial-overlay"
     >
       <div
-        className="glass px-4 py-2 rounded-lg border flex items-baseline gap-2"
+        className="glass px-3 py-2 rounded-lg border flex items-center gap-2"
         style={{ borderColor: noteColor, boxShadow: `0 0 20px ${noteColor}55` }}
       >
         <span
@@ -64,6 +69,23 @@ export default function ChordTutorial({ chords, currentTime, visible, noteColor 
           {chordDisplayName(active.name)}
         </span>
         <span className="text-[10px] uppercase tracking-[0.2em] text-white/50">chord</span>
+        {onPlay && (
+          <button
+            onClick={handlePlay}
+            onMouseDown={(e) => e.stopPropagation()}
+            className="pointer-events-auto ml-1 w-7 h-7 rounded-full flex items-center justify-center border transition-all hover:scale-110 active:scale-95"
+            style={{
+              borderColor: noteColor,
+              color: noteColor,
+              boxShadow: `0 0 10px ${noteColor}66`,
+            }}
+            data-testid="chord-tutorial-play"
+            title="Play this chord"
+            aria-label={`Play ${chordDisplayName(active.name)} chord`}
+          >
+            <Play size={12} fill="currentColor" />
+          </button>
+        )}
       </div>
       <MiniKeyboard whiteKeys={whiteKeys} chordSet={chordSet} noteColor={noteColor} />
     </div>

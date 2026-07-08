@@ -77,6 +77,9 @@ export function renderFrame(
   ctx.beginPath();
   ctx.rect(0, 0, w, NOTES_H);
   ctx.clip();
+  // Safe fallback for "rainbow" palette which is a marker string, not a hex.
+  const p0 = (typeof preset.palette[0] === "string" && preset.palette[0].startsWith("#")) ? preset.palette[0] : "#00F0FF";
+  const p1 = (typeof preset.palette[1] === "string" && preset.palette[1].startsWith("#")) ? preset.palette[1] : p0;
   if (song?.notes) {
     for (const n of song.notes) {
       const relStart = n.time - currentTime;
@@ -91,14 +94,14 @@ export function renderFrame(
       const nw = Math.max(4, wFrac * w - 3);
       const trackId = n.track !== undefined ? String(n.track) : "0";
       const tc = tracksColors[trackId];
-      const color = tc || (n.hand === "left" ? preset.palette[1] : preset.palette[0]);
-      drawNote(ctx, nx, topY, nw, noteH, preset.note, color, 1);
+      const color = tc || (n.hand === "left" ? p1 : p0);
+      drawNote(ctx, nx, topY, nw, noteH, preset.note, color, 1, n.midi, timeAbs);
     }
   }
   // Impact line at the piano boundary
   ctx.strokeStyle = "rgba(0,240,255,0.5)";
   ctx.lineWidth = 2;
-  ctx.shadowColor = preset.palette[0];
+  ctx.shadowColor = p0;
   ctx.shadowBlur = 10;
   ctx.beginPath();
   ctx.moveTo(0, NOTES_H - 1);
@@ -135,7 +138,7 @@ export function renderFrame(
     ctx.globalAlpha = pg * Math.min(1, activeSize / 6);
     const grad = ctx.createLinearGradient(0, NOTES_H - 60, 0, NOTES_H);
     grad.addColorStop(0, "rgba(255,255,255,0)");
-    grad.addColorStop(1, hexA(preset.palette[0], 0.7));
+    grad.addColorStop(1, hexA(p0, 0.7));
     ctx.fillStyle = grad;
     ctx.fillRect(0, NOTES_H - 60, w, 60);
     ctx.restore();

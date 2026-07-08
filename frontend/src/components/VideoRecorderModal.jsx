@@ -1,7 +1,7 @@
-import React, { useEffect, useRef, useState } from "react";
+import React, { useEffect, useRef, useState, useMemo, useCallback } from "react";
 import axios from "axios";
 import * as Tone from "tone";
-import { Video, X, Download, Play, Square, Sparkles, Wand2 } from "lucide-react";
+import { Video, X, Download, Play, Square, Sparkles, Wand2, VolumeX, Volume2, Radio } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
@@ -63,6 +63,10 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
   const [resolutionId, setResolutionId] = useState("hd");
   const [useVbr, setUseVbr] = useState(true);
   const [aiEnabled, setAiEnabled] = useState(true);
+  // Per-track mute/solo — muted tracks are hidden from render + audio.
+  // If a track id is in `soloedTracks`, only those tracks render.
+  const [mutedTracks, setMutedTracks] = useState(() => new Set());
+  const [soloedTracks, setSoloedTracks] = useState(() => new Set());
   const dimsRef = useRef(dimsForResolution("hd"));
 
   // playback engine state refs
@@ -102,6 +106,39 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
 
   const chosen = VFX_PRESETS.find((p) => p.id === preset) || VFX_PRESETS[0];
 
+  // Returns true if a note/track should be rendered + heard.
+  // Rules: if any tracks are soloed, only soloed tracks pass. Else if muted, block.
+  const isTrackAudible = useCallback((trackId) => {
+    const tid = trackId != null ? String(trackId) : "0";
+    if (soloedTracks.size > 0) return soloedTracks.has(tid);
+    return !mutedTracks.has(tid);
+  }, [mutedTracks, soloedTracks]);
+
+  // Song filtered by current mute/solo state — used for both preview & recording.
+  const visibleSong = useMemo(() => {
+    if (!song) return null;
+    if (!song.tracks || song.tracks.length <= 1) return song;
+    if (mutedTracks.size === 0 && soloedTracks.size === 0) return song;
+    const filteredNotes = song.notes.filter((n) => isTrackAudible(n.track));
+    const filteredTracks = song.tracks.filter((t) => isTrackAudible(t.id?.replace(/^t/, "")) || isTrackAudible(t.id));
+    return { ...song, notes: filteredNotes, tracks: filteredTracks };
+  }, [song, mutedTracks, soloedTracks, isTrackAudible]);
+
+  const toggleMute = useCallback((tid) => {
+    setMutedTracks((prev) => {
+      const next = new Set(prev);
+      if (next.has(tid)) next.delete(tid); else next.add(tid);
+      return next;
+    });
+  }, []);
+  const toggleSolo = useCallback((tid) => {
+    setSoloedTracks((prev) => {
+      const next = new Set(prev);
+      if (next.has(tid)) next.delete(tid); else next.add(tid);
+      return next;
+    });
+  }, []);
+
   // Sync default title with song or AI-generated title
   useEffect(() => {
     if (aiTitle) setVideoTitle(aiTitle);
@@ -140,10 +177,10 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
         if (cancelled || state === "recording") return;
         previewT += 1 / 60;
         previewActive.clear();
-        const cycleDur = song?.duration || 4;
+        const cycleDur = visibleSong?.duration || 4;
         const localT = previewT % cycleDur;
-        if (song?.notes) {
-          for (const n of song.notes) {
+        if (visibleSong?.notes) {
+          for (const n of visibleSong.notes) {
             if (n.time <= localT && localT < n.time + n.duration) {
               previewActive.set(n.midi, {
                 hand: n.hand || (n.midi < 60 ? "left" : "right"),
@@ -169,7 +206,7 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
       previewPrevActiveRef.current = new Set(previewActive.keys());
       updateParticles(previewParticlesRef.current);
 
-      renderFrame(ctx, chosen, previewT, localT, song, previewActive, previewParticlesRef.current, null, dims);
+      renderFrame(ctx, chosen, previewT, localT, visibleSong, previewActive, previewParticlesRef.current, null, dims);
       if (state !== "recording") rafRef.current = requestAnimationFrame(previewLoop);
       };  // end previewLoop
 
@@ -183,11 +220,12 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, preset, song?.id, resolutionId, trackColors]);
+  }, [open, preset, song?.id, resolutionId, trackColors, visibleSong]);
 
   const startRecording = async () => {
-    if (!song || !song.notes?.length) {
-      toast.error("Select a song with notes first");
+    const src = visibleSong || song;
+    if (!src || !src.notes?.length) {
+      toast.error("Select a song with notes first (all tracks may be muted)");
       return;
     }
     if (!sampler) {
@@ -228,9 +266,9 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
     // Small wait so MediaRecorder's audio track actually begins receiving samples.
     await new Promise((r) => setTimeout(r, 40));
 
-    const useIntro = showTitleCard && (videoTitle || song.name);
+    const useIntro = showTitleCard && (videoTitle || src.name);
     const introDur = useIntro ? INTRO_DURATION : 0;
-    const duration = introDur + song.duration + 1;
+    const duration = introDur + src.duration + 1;
 
     // T0 in audio-context seconds. Elapsed = Tone.now() - T0.
     playStartRef.current = Tone.now();
@@ -238,7 +276,7 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
     // Pre-schedule ALL notes on the audio timeline at exact absolute times.
     // This decouples audio timing from the RAF loop entirely — audio plays at
     // sample-accurate times regardless of when the visual loop fires.
-    for (const n of song.notes) {
+    for (const n of src.notes) {
       const when = playStartRef.current + introDur + n.time;
       const dur = Math.max(n.duration, 0.1);
       const noteName = Tone.Frequency(n.midi, "midi").toNote();
@@ -258,10 +296,10 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
       // with the pre-scheduled audio.
       if (elapsed >= introDur) {
         while (
-          noteIdxRef.current < song.notes.length &&
-          song.notes[noteIdxRef.current].time <= songTime
+          noteIdxRef.current < src.notes.length &&
+          src.notes[noteIdxRef.current].time <= songTime
         ) {
-          const n = song.notes[noteIdxRef.current];
+          const n = src.notes[noteIdxRef.current];
           const trackId = n.track !== undefined ? String(n.track) : "0";
           const hand = n.hand || (n.midi < 60 ? "left" : "right");
           activeKeysRef.current.set(n.midi, { hand, track: trackId });
@@ -295,7 +333,7 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
         chords: song.chords || [],
         trackColors: trackColors || {},
       };
-      renderFrame(ctx, chosen, elapsed, songTime, song, activeKeysRef.current, particlesRef.current, overlay, dimsRef.current);
+      renderFrame(ctx, chosen, elapsed, songTime, visibleSong, activeKeysRef.current, particlesRef.current, overlay, dimsRef.current);
 
       if (elapsed >= duration) {
         stopRecording();
@@ -494,6 +532,81 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
               </label>
             </div>
           </div>
+
+          {/* Track mixer — per-track solo/mute (only shown for multi-track songs) */}
+          {song?.tracks && song.tracks.length > 1 && (
+            <div className="glass-bright rounded-xl p-3" data-testid="track-mixer">
+              <div className="flex items-center gap-2 mb-2">
+                <Radio size={13} className="text-[#7CFF9A]" />
+                <span className="text-[10px] uppercase tracking-[0.2em] text-white/60">Track Mixer</span>
+                <span className="text-[9px] text-white/30 ml-auto uppercase tracking-widest">
+                  S · solo M · mute
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-1.5">
+                {song.tracks.map((t) => {
+                  const tid = String(t.id).replace(/^t/, "");
+                  const color = trackColors?.[tid] || trackColors?.[t.id] || "#00F0FF";
+                  const isMuted = mutedTracks.has(tid);
+                  const isSoloed = soloedTracks.has(tid);
+                  const dim = (soloedTracks.size > 0 && !isSoloed) || isMuted;
+                  return (
+                    <div
+                      key={t.id}
+                      className={`flex items-center gap-1.5 border rounded-lg pl-2 pr-1 py-1 transition-all ${dim ? "opacity-40" : ""}`}
+                      style={{ borderColor: color }}
+                      data-testid={`track-mixer-row-${t.id}`}
+                    >
+                      <span
+                        className="text-[10px] font-bold uppercase tracking-wider max-w-[100px] truncate"
+                        style={{ color }}
+                        title={`${t.name} · ${t.family}`}
+                      >
+                        {t.name}
+                      </span>
+                      <button
+                        onClick={() => toggleSolo(tid)}
+                        disabled={state === "recording"}
+                        className={`w-6 h-6 rounded text-[9px] font-bold uppercase transition-all ${
+                          isSoloed
+                            ? "bg-yellow-300 text-black shadow-[0_0_8px_rgba(253,224,71,0.7)]"
+                            : "border border-white/20 text-white/60 hover:border-yellow-300 hover:text-yellow-300"
+                        }`}
+                        data-testid={`track-solo-${t.id}`}
+                        title="Solo this track"
+                        aria-label={`Solo ${t.name}`}
+                      >
+                        S
+                      </button>
+                      <button
+                        onClick={() => toggleMute(tid)}
+                        disabled={state === "recording"}
+                        className={`w-6 h-6 rounded flex items-center justify-center transition-all ${
+                          isMuted
+                            ? "bg-[#FF003C] text-white shadow-[0_0_8px_rgba(255,0,60,0.7)]"
+                            : "border border-white/20 text-white/60 hover:border-[#FF003C] hover:text-[#FF003C]"
+                        }`}
+                        data-testid={`track-mute-${t.id}`}
+                        title="Mute this track"
+                        aria-label={`Mute ${t.name}`}
+                      >
+                        {isMuted ? <VolumeX size={12} /> : <Volume2 size={12} />}
+                      </button>
+                    </div>
+                  );
+                })}
+                {(mutedTracks.size > 0 || soloedTracks.size > 0) && (
+                  <button
+                    onClick={() => { setMutedTracks(new Set()); setSoloedTracks(new Set()); }}
+                    className="text-[9px] uppercase tracking-widest text-white/40 hover:text-white transition-colors px-2"
+                    data-testid="track-mixer-reset"
+                  >
+                    Reset
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
 
           {/* VFX preset picker */}
           <div className="glass-bright rounded-xl p-3">

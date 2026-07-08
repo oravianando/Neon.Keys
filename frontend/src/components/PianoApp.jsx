@@ -751,6 +751,11 @@ export default function PianoApp() {
                 currentTime={engine.currentTime}
                 visible={settings.chord_tutorial !== false && !editMode && (currentSong?.chords?.length > 0)}
                 noteColor={NOTE_COLORS_HEX[settings.note_color] || NOTE_COLORS_HEX.cyan}
+                onPlay={(midis) => {
+                  midis.forEach((m, i) => {
+                    setTimeout(() => engine.playNote(m, 1.2, 0.85, "piano"), i * 15);
+                  });
+                }}
               />
               {!currentSong && (
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">

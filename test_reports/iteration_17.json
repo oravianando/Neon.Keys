@@ -1,0 +1,45 @@
+{
+  "summary": "Iteration 17 — Verified 3 NEW additions: (1) Rainbow-flow VFX no crashes + distinct per-pitch hues, (2) Track Mixer solo/mute UI with proper visibility rules, (3) Chord Tutorial play button. Backend: 18/18 pytest pass (regression). Frontend: rainbow-flow selection produces zero pageerror / console.error, canvas grid-sampling of note pixels shows 16 distinct color buckets across 24 note pixels (cyan/teal/green/yellow/orange/magenta visible in screenshot) — confirming per-pitch chromatic hue + time drift. hexA() safe fallback for 'rainbow' works. Track Mixer renders exactly when song.tracks.length > 1: hidden for single-track (Barbaad Saiyaara, tracks:1), shown for seeded TEST_multi_track_iter17 (tracks:2) with rows track-mixer-row-t0 (Melody) and track-mixer-row-t1 (Bass), each with track-solo-{t.id} and track-mute-{t.id} buttons. Muting t0 adds opacity-40 to row0. Soloing t1 dims row0 but keeps row1. track-mixer-reset button appears after any mute/solo and clears both sets. During recording, S/M buttons are disabled=True (confirmed via getAttribute). Full recording end-to-end (mute bass + START RECORDING) completes in ~7.5s, produces MP4 download button, no runtime errors. ChordTutorial play button (data-testid=chord-tutorial-play) is present as a small circular button inside the chord pill during playback; clicking it fires onPlay(midis) with no errors. Backend regression: 18/18 pytest pass including refine-midi single/multi-track, sheet-to-midi variants, /api/settings chord_tutorial + convert_mode.",
+  "tested_scope": ["backend", "frontend", "integration"],
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": []
+  },
+  "passed": [
+    "Backend pytest 18/18 pass (test_backend.py) — demo-songs, songs CRUD, refine-midi (single/multi/cache-key/fallback), sheet-to-midi (empty/corrupt/PDF/PNG), video ai-enhance, /api/settings incl. chord_tutorial + convert_mode",
+    "Rainbow-flow preset: no pageerror, no console.error on selection; canvas note pixels show 16 distinct color buckets — per-pitch hue + time drift confirmed",
+    "hexA() safe fallback for 'rainbow' / undefined — verified indirectly (zero errors after selecting rainbow-flow, gradient rendering succeeds)",
+    "Track Mixer visibility gate — hidden for single-track song (Barbaad, tracks.length=1), shown for multi-track (tracks.length=2)",
+    "Track Mixer rows + buttons — track-mixer-row-t0, track-mixer-row-t1, track-solo-t0/t1, track-mute-t0/t1 all present",
+    "Mute t0 → row0 gets opacity-40; unmute removes it; Solo t1 → row0 dimmed, row1 not dimmed; Reset clears state",
+    "During recording, track-solo-* and track-mute-* buttons have disabled=True",
+    "Full recording flow with muted bass track completes end-to-end (download-video button appears, MP4 blob generated, no errors)",
+    "ChordTutorial play button (chord-tutorial-play) renders during playback of song with chords; click fires onPlay(midis) with no runtime errors",
+    "PianoApp.onPlay wiring — arpeggiated setTimeout(playNote) invoked (no errors)"
+  ],
+  "failed": [],
+  "test_report_links": [
+    "/app/backend/tests/test_backend.py",
+    "/app/test_reports/pytest/iter17.xml"
+  ],
+  "action_items": [
+    "OBSERVATION (not blocking): backend Note pydantic model (server.py L43-48) does not include a `track` field, so any note POSTed to /api/songs via SongCreate loses its `track` attribute on persistence & retrieval. This means for user-uploaded/manually-created multi-track songs, VideoRecorderModal's `visibleSong.notes.filter(n => isTrackAudible(n.track))` will treat every note as track '0' (default fallback). For refine-midi-generated multi_track songs the track field is preserved because those go through a raw-dict path (server.py L458 `n['track']=tid`). Consider adding `track: Optional[str] = None` to Note model so user-uploaded multi-track songs behave consistently with the mixer."
+  ],
+  "critical_code_review_comments": [
+    "vfx.js drawPiano now normalizes palette (isValidHex + fallback) — solid defense against 'rainbow' marker leaking into CanvasGradient.addColorStop. Good.",
+    "videoFrameRenderer.js also has p0/p1 hex-guard fallback (L81-82). Both files guard independently — slight duplication of validation logic; could extract a shared safeHex(c, fallback) helper.",
+    "VideoRecorderModal.jsx visibleSong memo (L118-125): song.tracks filter uses two isTrackAudible calls (with and without 't' prefix strip) which is defensive but slightly non-obvious; a comment would help. Also relies on song.notes containing `n.track`, which is NOT preserved through the Note pydantic model (see action item).",
+    "ChordTutorial.jsx handlePlay uses e.stopPropagation() correctly to prevent overlay pointer-events leak; play button correctly overrides parent pointer-events-none via pointer-events-auto.",
+    "PianoApp.jsx onPlay uses setTimeout with 15ms stagger — arpeggio effect. No cleanup on unmount; if user closes tutorial mid-play the timers still fire but engine.playNote is idempotent so no crash. Acceptable."
+  ],
+  "updated_files": [],
+  "success_rate": {"backend": "100% (18/18)", "frontend": "100% for iteration-17 new features"},
+  "test_credentials": "N/A",
+  "seed_data_creation": "Created TEST_multi_track_iter17 (id c89594e9-...) with 2 tracks (Melody/piano, Bass/bass), 7 notes, 2 chords (C, F). Used to exercise Track Mixer + chord-tutorial-play. Cleanup verified via DELETE /api/songs/{id} → {deleted:true}.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iterations 1-17 all pass. If Note.track persistence is added to the backend model, re-verify that solo/mute actually filters note events at the visual+audio layer for user-uploaded multi-track songs (not just refine-midi output). For rainbow-flow verification, sample canvas pixels via getImageData across a grid (see this iteration's script) — 8+ distinct color buckets indicates working chromatic hue mapping.",
+  "rca of the issue": "N/A — no bugs found in this iteration. Minor data-model gap around Note.track noted as a non-blocking observation."
+}

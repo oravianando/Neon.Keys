@@ -161,7 +161,7 @@ export function drawBackground(ctx, w, h, style, time, palette) {
 }
 
 // ============ Note rendering ============
-export function drawNote(ctx, x, y, w, h, style, color, alpha = 1) {
+export function drawNote(ctx, x, y, w, h, style, color, alpha = 1, midi = 0, timeAbs = 0) {
   ctx.save();
   ctx.globalAlpha = alpha;
   const r = Math.min(6, w / 2, h / 2);
@@ -186,11 +186,26 @@ export function drawNote(ctx, x, y, w, h, style, color, alpha = 1) {
       break;
     }
     case "rainbow": {
-      const hue = (x / 4) % 360;
-      const c = `hsl(${hue}, 100%, 60%)`;
-      ctx.fillStyle = c;
-      ctx.shadowColor = c; ctx.shadowBlur = 22;
-      roundRect(ctx, x, y, w, h, r); ctx.fill();
+      // Each pitch class gets a distinct hue (chromatic color-wheel).
+      // Additional time-based drift makes the palette flow while playing.
+      const pitchClass = ((midi % 12) + 12) % 12;
+      const octave = Math.floor(midi / 12);
+      const hue = ((pitchClass * 30) + (timeAbs * 40) + (octave * 5)) % 360;
+      const c1 = `hsl(${hue}, 100%, 60%)`;
+      const c2 = `hsl(${(hue + 40) % 360}, 100%, 45%)`;
+      const g = ctx.createLinearGradient(x, y, x, y + h);
+      g.addColorStop(0, c1);
+      g.addColorStop(1, c2);
+      ctx.fillStyle = g;
+      ctx.shadowColor = c1;
+      ctx.shadowBlur = 22;
+      roundRect(ctx, x, y, w, h, r);
+      ctx.fill();
+      ctx.shadowBlur = 0;
+      // Glossy highlight
+      ctx.fillStyle = "rgba(255,255,255,0.35)";
+      roundRect(ctx, x + 2, y + 2, Math.max(1, w - 4), Math.max(1, h * 0.35), Math.max(0, r - 2));
+      ctx.fill();
       break;
     }
     case "glow":
@@ -235,6 +250,11 @@ export function drawPiano(ctx, x0, y0, w, h, activeKeys, palette, keyFx, trackCo
     if (isMap) return activeKeys.get(midi) || null;
     return activeKeys.has(midi) ? { hand: midi < 60 ? "left" : "right", track: "0" } : null;
   };
+  // Normalize the palette so downstream code never sees "rainbow" or undefined.
+  const isValidHex = (c) => typeof c === "string" && /^#?[a-f0-9]{6}$/i.test(c);
+  const normP0 = isValidHex(palette?.[0]) ? palette[0] : "#00F0FF";
+  const normP1 = isValidHex(palette?.[1]) ? palette[1] : "#FF00E6";
+  const pal = [normP0, normP1];
   const colorFor = (meta, defColor) => {
     if (!meta) return null;
     if (trackColors && meta.track != null && trackColors[meta.track]) return trackColors[meta.track];
@@ -242,8 +262,7 @@ export function drawPiano(ctx, x0, y0, w, h, activeKeys, palette, keyFx, trackCo
   };
 
   // Inactive-key tints derived from palette[0] (matches rolling notes color).
-  // White keys → light desaturated tint. Black keys → dark tint.
-  const baseHex = (palette[0] && palette[0] !== "rainbow") ? palette[0] : "#00F0FF";
+  const baseHex = pal[0];
   const paletteRgb = hexRgb(baseHex);
   const whiteTop = mix(paletteRgb, { r: 255, g: 255, b: 255 }, 0.75);   // light
   const whiteBot = mix(paletteRgb, { r: 255, g: 255, b: 255 }, 0.55);   // slightly darker
@@ -263,7 +282,7 @@ export function drawPiano(ctx, x0, y0, w, h, activeKeys, palette, keyFx, trackCo
     const active = !!meta;
     const g = ctx.createLinearGradient(0, 0, 0, h);
     if (active) {
-      const c1 = colorFor(meta, palette[0]);
+      const c1 = colorFor(meta, pal[0]);
       const c2 = hexA(c1, 0.6);
       g.addColorStop(0, c1); g.addColorStop(1, c2);
       ctx.shadowColor = c1;
@@ -291,7 +310,7 @@ export function drawPiano(ctx, x0, y0, w, h, activeKeys, palette, keyFx, trackCo
     const meta = getMeta(m);
     const active = !!meta;
     if (active) {
-      const c = colorFor(meta, palette[1]);
+      const c = colorFor(meta, pal[1]);
       ctx.shadowColor = c;
       ctx.shadowBlur = keyFx === "pulse" ? 28 : 20;
       const g = ctx.createLinearGradient(0, 0, 0, bkH);
@@ -383,10 +402,13 @@ function roundRect(ctx, x, y, w, h, r) {
 }
 
 export function hexA(hex, a) {
-  // hex like "#RRGGBB" or "rgb(..)" — normalize
+  // Handle invalid / non-hex values — return a safe fallback so canvas ops
+  // (createLinearGradient.addColorStop, shadowColor, etc.) never crash.
+  if (!hex || typeof hex !== "string") return `rgba(0,240,255,${a})`;
+  if (hex === "rainbow") return `rgba(255,255,255,${a})`;
   if (hex.startsWith("hsl") || hex.startsWith("rgb")) return hex;
   const m = /^#?([a-f0-9]{2})([a-f0-9]{2})([a-f0-9]{2})$/i.exec(hex);
-  if (!m) return hex;
+  if (!m) return `rgba(0,240,255,${a})`;
   return `rgba(${parseInt(m[1], 16)},${parseInt(m[2], 16)},${parseInt(m[3], 16)},${a})`;
 }
 
