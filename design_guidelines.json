@@ -1,0 +1,114 @@
+{
+  "project_context": {
+    "domain": "Music/Creative Tool",
+    "theme": "Dark",
+    "archetype": "7 (Electric & Neon)",
+    "vibe": "Immersive, futuristic, synthetic, high-end",
+    "description": "A premium dark-neon piano app featuring MIDI/audio extraction, rolling synthesia-style glowing notes, and an interactive 88-key keyboard."
+  },
+  "color_system": {
+    "backgrounds": {
+      "base": "#050505",
+      "surface": "#121212",
+      "glass": "rgba(0, 0, 0, 0.6)"
+    },
+    "accents": {
+      "primary": "#00F0FF",
+      "secondary": "#FF003C",
+      "tertiary": "#7000FF",
+      "glow_primary": "rgba(0, 240, 255, 0.6)",
+      "glow_secondary": "rgba(255, 0, 60, 0.6)"
+    },
+    "text": {
+      "primary": "#FFFFFF",
+      "secondary": "#A0A0A0",
+      "muted": "#555555"
+    },
+    "piano_keys": {
+      "white_inactive": "#EAEAEA",
+      "black_inactive": "#121212",
+      "white_active": "#00F0FF",
+      "black_active": "#FF003C"
+    }
+  },
+  "typography": {
+    "fonts": {
+      "headings": "Unbounded, sans-serif",
+      "body": "JetBrains Mono, monospace"
+    },
+    "scale": {
+      "h1": "text-4xl sm:text-5xl lg:text-6xl tracking-tighter font-black",
+      "h2": "text-2xl sm:text-3xl lg:text-4xl tracking-tight font-bold",
+      "h3": "text-xl sm:text-2xl font-semibold",
+      "body": "text-base leading-relaxed",
+      "labels": "text-xs tracking-[0.2em] uppercase"
+    }
+  },
+  "layout_and_spacing": {
+    "spacing_scale": "Generous spacing. Use p-6, p-8, p-12 for containers.",
+    "app_structure": {
+      "hero_section": "Top area with overlapping glass panels for song selection, upload, and demo library.",
+      "rolling_notes_area": "Flex-grow area taking up maximum vertical space above the piano. Must have overflow-hidden. Use a subtle linear gradient background (from black to very dark blue/purple at the bottom) to give depth to falling notes.",
+      "piano_keyboard": "Fixed or sticky at the bottom. Full width. Container must allow horizontal scrolling if 88 keys don't fit, or use responsive sizing."
+    },
+    "surface_styles": {
+      "glass_panels": "backdrop-blur-xl bg-black/60 border border-white/10 shadow-[0_8px_32px_rgba(0,240,255,0.05)]",
+      "buttons": "bg-transparent border border-[#00F0FF] text-[#00F0FF] hover:bg-[#00F0FF] hover:text-black transition-all duration-300"
+    }
+  },
+  "components_and_features": {
+    "piano_keyboard": {
+      "white_keys": "Relative positioning, border-r border-black/20, rounded-b-md shadow-sm. Active state: bg-[#00F0FF] drop-shadow-[0_0_15px_rgba(0,240,255,0.8)]",
+      "black_keys": "Absolute positioning, z-10, rounded-b-sm bg-[#121212] border border-white/5. Active state: bg-[#FF003C] drop-shadow-[0_0_15px_rgba(255,0,60,0.8)]",
+      "note_labels": "Positioned at the bottom of keys, text-[10px] font-mono text-black/50 (white keys) or text-white/50 (black keys)."
+    },
+    "rolling_notes": {
+      "style": "Rounded rectangles falling from top. Width matches corresponding piano key. Glow effect mandatory.",
+      "glow_effect": "box-shadow: 0 0 10px currentColor, 0 0 20px currentColor",
+      "animation": "Use Framer Motion or HTML5 Canvas for smooth vertical translation of notes."
+    },
+    "controls_and_transport": {
+      "container": "Floating glassmorphism bar placed over the lower section of the rolling notes, containing play/pause, stop, speed slider.",
+      "slider": "Shadcn Slider customized with neon accent colors."
+    },
+    "settings_panel": {
+      "style": "Shadcn Sheet or Dialog with Neumorphic/Glassmorphism hybrid. Switches and toggles for volume, range, note colors."
+    },
+    "upload_zone": {
+      "style": "Dashed border with glowing hover state. Display supported formats (.mid, .mp3, .wav)."
+    }
+  },
+  "motion_and_interactions": {
+    "hover_states": "All buttons must have explicit text color changes on hover. e.g., hover:bg-[#00F0FF] hover:text-black hover:shadow-[0_0_20px_rgba(0,240,255,0.5)]",
+    "key_press": "Scale down slightly (scale-95 or scale-y-95) for tactile feedback.",
+    "page_load": "Fade in with stagger for controls and keyboard."
+  },
+  "media_and_assets": {
+    "icons_library": "lucide-react",
+    "images": {
+      "background_abstract": {
+        "url": "https://images.pexels.com/photos/12187128/pexels-photo-12187128.jpeg",
+        "description": "Neon cyberpunk abstract dark background to be used as a low-opacity background layer for the app.",
+        "usage": "Set as fixed background image with high opacity black overlay (e.g., bg-black/80) to preserve text contrast."
+      },
+      "hero_accent": {
+        "url": "https://images.unsplash.com/photo-1609705025038-60908171cf5e?crop=entropy&cs=srgb&fm=jpg&ixid=M3w4NjA1NzV8MHwxfHNlYXJjaHwxfHxuZW9uJTIwZ2xvd2luZyUyMG11c2ljYWwlMjBub3RlcyUyMGRhcmslMjBiYWNrZ3JvdW5kfGVufDB8fHx8MTc4MjI0NjMyM3ww&ixlib=rb-4.1.0&q=85",
+        "description": "Abstract neon musical notes/streaks.",
+        "usage": "Use in the empty state of the rolling notes area or as a banner image in the demo song library."
+      }
+    }
+  },
+  "testing_and_accessibility": {
+    "data_testid": "MANDATORY. Add 'data-testid' to all interactive elements: buttons, inputs, piano keys, settings toggles (e.g., data-testid='play-button', data-testid='piano-key-C4').",
+    "contrast": "Ensure text over neon backgrounds is black or dark for APCA readability."
+  },
+  "instructions_to_main_agent": [
+    "Generate .js files exclusively, no .tsx.",
+    "Do not use Shadcn card components for the main layout; rely on custom HTML/Tailwind for the glassmorphism layout to maintain creative freedom.",
+    "Use Shadcn for interactive logic components (Slider for playback speed, Dialog for settings, Switch for toggles, Tabs for settings navigation).",
+    "Ensure the rolling notes visualization area is carefully synced with the piano keyboard width and position. Use percentage-based widths or flex basis corresponding to the 88 keys.",
+    "Avoid using purely transparent backgrounds for headers or overlays that contain text. Always use backdrop-blur and a semi-solid dark color.",
+    "Implement the 'Electric & Neon' archetype precisely as specified in the color_system. Avoid generic gray/blue tech vibes.",
+    "Implement audio/MIDI parsing using a library like @tonejs/midi or similar, and render the visualization using Canvas or Framer Motion for performance."
+  ]
+}
