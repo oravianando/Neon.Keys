@@ -57,17 +57,17 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
   const [videoExt, setVideoExt] = useState("webm");
   const [aiEnhancing, setAiEnhancing] = useState(false);
   const [aiTitle, setAiTitle] = useState("");
-  const [aiTagline, setAiTagline] = useState("");
+  const [aiTagline, setAiTagline] = useState("- Chitoos Media");
   const [showTitleCard, setShowTitleCard] = useState(true);
   const [showSubtitles, setShowSubtitles] = useState(true);
-  const [resolutionId, setResolutionId] = useState("hd");
+  const [resolutionId, setResolutionId] = useState("fhd");
   const [useVbr, setUseVbr] = useState(true);
   const [aiEnabled, setAiEnabled] = useState(true);
   // Per-track mute/solo — muted tracks are hidden from render + audio.
   // If a track id is in `soloedTracks`, only those tracks render.
   const [mutedTracks, setMutedTracks] = useState(() => new Set());
   const [soloedTracks, setSoloedTracks] = useState(() => new Set());
-  const dimsRef = useRef(dimsForResolution("hd"));
+  const dimsRef = useRef(dimsForResolution("fhd"));
 
   // playback engine state refs
   const playStartRef = useRef(0);
@@ -346,9 +346,18 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
 
   const stopRecording = async () => {
     cancelAnimationFrame(rafRef.current);
-    // Silence any pre-scheduled notes that haven't fired yet (relevant if the
-    // user cancels mid-recording).
-    try { sampler?.releaseAll?.(); } catch (e) { /* ignore */ }
+
+    // Silence any pre-scheduled notes that haven't fired yet. `sampler.releaseAll()`
+    // only stops currently-held notes, NOT future-scheduled ones on the audio timeline.
+    // We must temporarily mute the sampler's own volume so upcoming triggerAttackRelease
+    // calls output no audio. After the recorder finishes, we restore the volume.
+    try {
+      if (sampler?.volume) {
+        sampler.volume.value = -Infinity;
+      }
+      sampler?.releaseAll?.();
+    } catch (e) { /* ignore */ }
+
     if (recorderRef.current) {
       try {
         const blob = await recorderRef.current.stop();
@@ -363,6 +372,13 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
       }
       recorderRef.current = null;
     }
+
+    // Restore sampler volume so the piano works again in the main app.
+    setTimeout(() => {
+      try {
+        if (sampler?.volume) sampler.volume.value = 0;
+      } catch (e) { /* ignore */ }
+    }, 250);
   };
 
   const downloadVideo = () => {
@@ -390,10 +406,12 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
         },
         { timeout: 30000 },
       );
-      const { preset_id, title, tagline, mood } = res.data;
+      const { preset_id, title, mood } = res.data;
       if (preset_id) setPreset(preset_id);
       if (title) setAiTitle(title);
-      if (tagline) setAiTagline(tagline);
+      // NOTE: `tagline` from AI is intentionally ignored so the branded
+      // "- Chitoos Media" subtitle stays put. Users can still manually edit
+      // the subtitle input if they want a different one.
       toast.success(`AI picked ${preset_id}${mood ? ` (${mood} mood)` : ""}`);
     } catch (err) {
       console.error("AI enhance failed", err);
