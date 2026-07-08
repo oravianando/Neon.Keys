@@ -1,34 +1,128 @@
-.App-logo {
-    height: 40vmin;
-    pointer-events: none;
+.App {
+  min-height: 100vh;
+  background: #050505;
+  color: white;
+  font-family: "JetBrains Mono", monospace;
 }
 
-@media (prefers-reduced-motion: no-preference) {
-    .App-logo {
-        animation: App-logo-spin infinite 20s linear;
-    }
+@keyframes fadeInUp {
+  from {
+    opacity: 0;
+    transform: translateY(20px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
 }
 
-.App-header {
-    background-color: #0f0f10;
-    min-height: 100vh;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    font-size: calc(10px + 2vmin);
-    color: white;
+.fade-in-up {
+  animation: fadeInUp 0.6s ease-out forwards;
 }
 
-.App-link {
-    color: #61dafb;
+.neon-cyan {
+  color: #00f0ff;
+  text-shadow: 0 0 12px rgba(0, 240, 255, 0.6);
 }
 
-@keyframes App-logo-spin {
-    from {
-        transform: rotate(0deg);
-    }
-    to {
-        transform: rotate(360deg);
-    }
+.neon-pink {
+  color: #ff003c;
+  text-shadow: 0 0 12px rgba(255, 0, 60, 0.6);
+}
+
+.glass {
+  background: rgba(10, 10, 15, 0.6);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.glass-bright {
+  background: rgba(20, 20, 30, 0.7);
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(0, 240, 255, 0.15);
+  box-shadow: 0 8px 32px rgba(0, 240, 255, 0.05);
+}
+
+.grid-bg {
+  background-image:
+    linear-gradient(rgba(0, 240, 255, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 240, 255, 0.04) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+.piano-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+.piano-scroll::-webkit-scrollbar-track {
+  background: rgba(255, 255, 255, 0.05);
+}
+.piano-scroll::-webkit-scrollbar-thumb {
+  background: rgba(0, 240, 255, 0.3);
+  border-radius: 3px;
+}
+
+/* Piano key styles */
+.white-key {
+  position: relative;
+  background: linear-gradient(180deg, #f5f5f5 0%, #e0e0e0 100%);
+  border: 1px solid rgba(0, 0, 0, 0.3);
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  box-shadow:
+    inset 0 -6px 0 rgba(0, 0, 0, 0.08),
+    0 2px 4px rgba(0, 0, 0, 0.4);
+  transition: all 80ms ease-out;
+  cursor: pointer;
+  user-select: none;
+}
+.white-key.active {
+  background: linear-gradient(180deg, #00f0ff 0%, #00b8cc 100%);
+  box-shadow:
+    inset 0 -4px 0 rgba(0, 0, 0, 0.15),
+    0 0 24px rgba(0, 240, 255, 0.75),
+    0 0 48px rgba(0, 240, 255, 0.4);
+  transform: translateY(2px);
+}
+
+.black-key {
+  position: absolute;
+  top: 0;
+  background: linear-gradient(180deg, #1a1a1a 0%, #000 100%);
+  border: 1px solid rgba(255, 255, 255, 0.05);
+  border-radius: 0 0 4px 4px;
+  box-shadow:
+    inset 0 -3px 0 rgba(255, 255, 255, 0.05),
+    0 4px 6px rgba(0, 0, 0, 0.6);
+  z-index: 10;
+  transition: all 80ms ease-out;
+  cursor: pointer;
+  user-select: none;
+}
+.black-key.active {
+  background: linear-gradient(180deg, #ff003c 0%, #b0002a 100%);
+  box-shadow:
+    inset 0 -2px 0 rgba(255, 255, 255, 0.1),
+    0 0 20px rgba(255, 0, 60, 0.85),
+    0 0 40px rgba(255, 0, 60, 0.45);
+  transform: translateY(2px);
+}
+
+.key-label {
+  position: absolute;
+  bottom: 6px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 9px;
+  font-family: "JetBrains Mono", monospace;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  pointer-events: none;
+}
+.white-key .key-label {
+  color: rgba(0, 0, 0, 0.55);
+}
+.black-key .key-label {
+  color: rgba(255, 255, 255, 0.55);
+  bottom: 4px;
 }

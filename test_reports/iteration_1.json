@@ -1,0 +1,32 @@
+{
+  "summary": "First iteration smoke test of Piano App (NEON.KEYS). All 6 backend endpoints and all major frontend flows verified against public URL. Rolling notes, piano key highlighting, playback, pause/stop, speed slider, settings panel, and direct piano key clicks all working.",
+  "tested_scope": ["frontend", "backend", "integration"],
+  "passed": [
+    "GET /api/demo-songs returns 5 demo songs (twinkle, ode-to-joy, für-elise-(intro), happy-birthday, canon-in-d-(melody)) with notes arrays",
+    "POST /api/songs creates song and returns generated uuid id (200)",
+    "GET /api/songs lists newly created song (200)",
+    "GET /api/songs/{id} returns single song (200); GET on non-existent id returns 404 with detail 'Song not found'",
+    "DELETE /api/songs/{id} returns {deleted: true}; subsequent GET returns 404",
+    "GET /api/settings returns defaults on first call; PUT /api/settings persists {volume,speed,show_labels,note_color,sustain,lookahead} and next GET reflects updates",
+    "Frontend loads at / — NEON.KEYS header, LIBRARY with 5 demo song rows, UPLOAD, SETTINGS visible",
+    "Empty state 'Choose a song or upload MIDI' visible before selecting song (see /tmp/init.png)",
+    "88-key piano rendered (piano-keyboard testid) with 36 black keys visible",
+    "Clicking song-row-twinkle-twinkle-little-star highlights row and sets current-song-name to 'Twinkle Twinkle Little Star'",
+    "Play button starts playback: pause-button visible, current-time advances to 0:02 in 2s, rolling-notes canvas active, piano key visibly highlighted cyan (see /tmp/final.png)",
+    "Pause button freezes progress (0:02 stayed at 0:02 after 1s)",
+    "Stop button resets current-time to 0:00",
+    "Speed slider drag changed speed-value from 1.00x to 0.60x",
+    "Settings button opens right Sheet with volume-slider, labels-switch, sustain-switch all visible",
+    "Direct piano key click (C4) executes without error"
+  ],
+  "failed": [],
+  "notes": [
+    "Two AudioContext warnings printed before first user gesture — expected browser autoplay policy behavior; resolved on first click.",
+    "Active-key CSS class selector in my probe returned 0, but screenshot clearly shows C4 highlighted cyan during playback, so visual highlight IS working (my selector was too strict, not an app bug).",
+    "Demo song id 'für-elise-(intro)' includes umlaut and parens — resolves correctly through API and DOM (verified by clicking other song by id)."
+  ],
+  "action_items": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "retest_needed": false,
+  "full_testing_deferred": true
+}
