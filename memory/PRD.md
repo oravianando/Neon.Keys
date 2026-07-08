@@ -35,7 +35,12 @@ Create a piano app, extract MIDI from a song, add song upload option, show rolli
   - **Download MIDI** — download icon on every song row (demo + uploaded) exports a `.mid` file via @tonejs/midi. Songs with hand tags get 2 tracks (Right/Left); multi-track songs preserve their tracks.
   - **Playable + aligned stacked pianos** — TrackPianoStack keyboards now span full width (aligned 1:1 with main piano); track name is a floating badge. Every key is a clickable `<button>` that triggers the track's own instrument family.
   - **Video export key tinting** — inactive white/black piano keys in the exported video are now tinted with the preset's palette[0] (matches rolling notes color) instead of pure white/black.
-- **2026-02-08 v11 (this iteration):**
+- **2026-02-08 v12 (this iteration):**
+  - **Rainbow-flow VFX** — notes now use pitch-class based chromatic hue rotation (each pitch = distinct color on the color wheel) with time-based drift for animated "flow". Also fixed a hard crash where the "rainbow" palette marker leaked into CanvasGradient.addColorStop (`hexA()` + `drawPiano` now guard against non-hex palette entries).
+  - **Per-track solo/mute (video export)** — new Track Mixer panel in VideoRecorderModal (only shown for multi-track songs). Each track shows S (solo) + M (mute) buttons. Muted tracks are excluded from BOTH audio pre-scheduling AND visual render (via `visibleSong` memo). Reset button clears all mute/solo state. S/M buttons disabled during recording.
+  - **Chord playback preview** — ChordTutorial now has a small circular Play button (`data-testid='chord-tutorial-play'`) inside the chord pill. Clicking triggers all chord tones via `engine.playNote()` with a 15ms arpeggio stagger.
+  - **Backend Note.track field** — added `track: Optional[int]` to the Note pydantic model so user-uploaded multi-track songs persist track assignments correctly (previously the field was dropped through the model layer).
+- **2026-02-08 v11:**
   - **Custom logo** — replaced the placeholder Piano icon in the header with the user-provided hexagonal blue "C" logo (`/public/logo.png`). Also updated the browser tab title ("NEON.KEYS — Piano App") and favicon.
   - **Editable subtitle input** — VideoRecorderModal now has a dedicated `data-testid='video-subtitle-input'` text field alongside the title input. Users can type their own tagline or edit the AI-generated one; changes flow through to the on-screen title-card render.
 - **2026-02-08 v10:**

@@ -46,6 +46,7 @@ class Note(BaseModel):
     duration: float
     velocity: float = 0.8
     hand: Optional[str] = None  # 'left' | 'right' | None
+    track: Optional[int] = None  # track index for multi-track songs (0-based)
 
 
 class Song(BaseModel):
