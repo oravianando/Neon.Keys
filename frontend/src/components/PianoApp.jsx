@@ -1,6 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
-import { Piano as PianoIcon } from "lucide-react";
 import PianoKeyboard from "@/components/PianoKeyboard";
 import RollingNotes from "@/components/RollingNotes";
 import TransportControls from "@/components/TransportControls";
@@ -616,9 +615,12 @@ export default function PianoApp() {
       {/* Header */}
       <header className="relative z-20 px-6 lg:px-10 py-4 flex items-center justify-between border-b border-white/5">
         <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-lg bg-gradient-to-br from-[#00F0FF] to-[#7000FF] flex items-center justify-center shadow-[0_0_20px_rgba(0,240,255,0.5)]">
-            <PianoIcon size={20} className="text-black" strokeWidth={2.5} />
-          </div>
+          <img
+            src="/logo.png"
+            alt="NEON.KEYS logo"
+            className="w-11 h-11 object-contain drop-shadow-[0_0_18px_rgba(0,180,255,0.6)]"
+            data-testid="app-logo"
+          />
           <div>
             <div className="text-[10px] tracking-[0.3em] uppercase text-white/40">Emergent</div>
             <h1 className="font-heading font-black text-xl leading-none tracking-tighter">

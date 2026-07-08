@@ -436,15 +436,6 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
               <Wand2 size={12} className={aiEnhancing ? "animate-spin" : ""} />
               {aiEnhancing ? "Thinking…" : "AI Suggest"}
             </button>
-            {aiTagline && (
-              <span
-                className="text-white/50 italic text-xs border-l border-white/10 pl-3"
-                data-testid="ai-tagline-preview"
-                title={aiTagline}
-              >
-                — {aiTagline}
-              </span>
-            )}
             <div className="flex items-center gap-2 border-l border-white/10 pl-3 flex-1 min-w-[200px]" data-testid="video-title-field">
               <span className="text-white/40 uppercase tracking-widest text-[9px] whitespace-nowrap">Title</span>
               <input
@@ -457,6 +448,20 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
                 className="flex-1 min-w-0 bg-transparent border-b border-white/15 focus:border-[#00F0FF] focus:outline-none px-1 py-1 text-sm font-heading font-bold neon-cyan placeholder:text-white/25 placeholder:font-normal placeholder:italic disabled:opacity-40 transition-colors"
                 data-testid="video-title-input"
                 aria-label="Video title"
+              />
+            </div>
+            <div className="flex items-center gap-2 border-l border-white/10 pl-3 flex-1 min-w-[240px]" data-testid="video-subtitle-field">
+              <span className="text-white/40 uppercase tracking-widest text-[9px] whitespace-nowrap">Subtitle</span>
+              <input
+                type="text"
+                value={aiTagline}
+                onChange={(e) => setAiTagline(e.target.value)}
+                disabled={state === "recording"}
+                placeholder="AI tagline or your own subtitle"
+                maxLength={120}
+                className="flex-1 min-w-0 bg-transparent border-b border-white/15 focus:border-yellow-300 focus:outline-none px-1 py-1 text-sm italic text-white/80 placeholder:text-white/25 placeholder:not-italic disabled:opacity-40 transition-colors"
+                data-testid="video-subtitle-input"
+                aria-label="Video subtitle"
               />
             </div>
             <div className="ml-auto flex items-center gap-4">
