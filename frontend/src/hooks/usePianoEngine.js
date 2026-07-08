@@ -84,9 +84,9 @@ export function usePianoEngine({
 
   // Play a single note (from user click on the keyboard)
   const playNote = useCallback(
-    (midi, duration = 0.6, velocity = 0.8) => {
+    (midi, duration = 0.6, velocity = 0.8, family = "piano") => {
       if (!ready) return;
-      const inst = getInstrument("piano");
+      const inst = getInstrument(family);
       const noteName = Tone.Frequency(midi, "midi").toNote();
       try {
         inst.triggerAttackRelease(noteName, duration, undefined, velocity);

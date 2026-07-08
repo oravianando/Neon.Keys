@@ -1,0 +1,45 @@
+{
+  "summary": "Iteration 13 — all NEW features verified end-to-end. Sheet-to-MIDI endpoint (Claude Sonnet 4.6 Vision + PDF stitching) works with a real Twinkle Twinkle PDF (returns 97 notes, correct right/left hand split, page_count=1, duration=44.2s, tempo=100, key='C major', source='sheet', tracks=[Right Hand:57, Left Hand:40]). Error paths verified (empty→400, corrupt→400/422). Frontend SHEET button, per-song MIDI Download (real .mid file download triggered), TrackPianoStack (aligned width with main piano, 88 keys/row buttons, correct data-testids), and VideoRecorderModal piano key tinting (fire→salmon RGB(255,171,144), gold→gold RGB(215,200,121)) all verified. Backend regression 9/9 pass. Frontend flows 100% pass.",
+  "tested_scope": ["backend", "frontend", "integration"],
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [],
+    "design_issues": [
+      {"screen": "VideoRecorderModal", "issues": ["DialogContent missing `Description` / `aria-describedby` (a11y console warning, non-blocking)"]}
+    ]
+  },
+  "passed": [
+    "POST /api/sheet-to-midi with real Twinkle PDF: 200, 97 notes, page_count=1, dur=44.2s, tracks split into Right Hand (57)/Left Hand (40); all 40 low-midi (<60) notes tagged 'left'",
+    "POST /api/sheet-to-midi empty file → 400",
+    "POST /api/sheet-to-midi corrupt bytes → 400 (unreadable)",
+    "GET /api/demo-songs, GET /api/songs, GET/PUT /api/settings, POST /api/songs, DELETE /api/songs/{id}, POST /api/refine-midi, POST /api/video/ai-enhance all 200",
+    "SongLibrary SHEET button (data-testid='upload-sheet-button') present with magenta border; hidden input (data-testid='upload-sheet-input') accepts '.png,.jpg,.jpeg,.webp,.pdf,image/png,image/jpeg,image/webp,application/pdf'",
+    "Per-song Download button (data-testid='download-midi-twinkle-twinkle-little-star') triggers real .mid file download ('Twinkle_Twinkle_Little_Star.mid')",
+    "Multi-track song ('multi_track', 3 tracks) → data-testid='track-piano-stack' renders with 2 secondary rows (piano is primary), 88 white+black stack-key-* buttons per row",
+    "Stack piano width matches main piano width (1534 vs 1536 px, both left=360±1, right=1895±1) — aligned 1:1, no left sidebar taking space",
+    "Track badge is floating (absolute positioned overlay), does not consume keyboard width",
+    "Stack keys clickable — dispatch_event('mousedown') fires handler with no console errors",
+    "VideoRecorderModal opens; canvas draws piano; switching to 'fire' preset tints white keys with palette[0] (RGB 255,171,144 salmon/fire), switching to 'gold' tints white keys RGB(215,200,121); visually distinct per preset in screenshot"
+  ],
+  "failed": [],
+  "test_report_links": [
+    "/app/backend/tests/test_backend.py",
+    "/app/test_reports/pytest/iter13.xml"
+  ],
+  "action_items": [
+    "(Optional a11y polish) Add <DialogDescription> or aria-describedby to VideoRecorderModal DialogContent to silence Radix accessibility warning."
+  ],
+  "critical_code_review_comments": [
+    "server.py is now 770 lines — approaching the 700-line threshold; consider splitting sheet-music helpers (_pdf_to_page_images, _normalize_image_bytes, _sheet_page_to_notes, _stitch_pages, SHEET_MUSIC_SYSTEM) into /app/backend/sheet_music.py.",
+    "Sheet-to-midi loops pages sequentially with `await` per page — for >5 pages this is slow. Consider asyncio.gather with a small concurrency limit.",
+    "TrackPianoStack: stack keyboards can be clipped off-screen when the parent container has overflow-hidden at tall viewports; consider making the stack area scrollable inside the container or reducing per-row height."
+  ],
+  "updated_files": ["/app/backend/tests/test_backend.py (new)"],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "test_credentials": "N/A (no auth)",
+  "seed_data_creation": "Created & deleted TEST_regression_song via /api/songs during backend test",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend PDF sheet fetch uses https://www.makingmusicfun.net/public/assets/pdf/sheet_music/twinkle-twinkle-little-star-piano-solo.pdf (wikimedia upload URLs return 404 from this sandbox). Sheet-to-midi vision call takes ~50s per single-page PDF. Multi-track demo song is 'multi_track' (3 tracks: Piano/Bass/String Ensemble) in user library — use it to verify TrackPianoStack. Video modal preset testids follow pattern 'vfx-preset-{id}' (not 'preset-*')."
+}

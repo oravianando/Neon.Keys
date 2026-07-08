@@ -9,6 +9,7 @@ import SettingsPanel from "@/components/SettingsPanel";
 import { usePianoEngine } from "@/hooks/usePianoEngine";
 import { parseMidiFile } from "@/lib/midiParse";
 import { convertAudioToMidi } from "@/lib/audioToMidi";
+import { downloadSongAsMidi } from "@/lib/midiExport";
 import ChordStrip from "@/components/ChordStrip";
 import ToolBar from "@/components/ToolBar";
 import { MidiEditorOverlay, EditToolbar } from "@/components/MidiEditor";
@@ -198,7 +199,7 @@ export default function PianoApp() {
     async (file, isAudio) => {
       let parsed;
       if (isAudio) {
-        setConverting({ stage: "Decoding audio", percent: 0 });
+        setConverting({ stage: "Decoding audio", percent: 0, kind: "audio" });
         try {
           parsed = await convertAudioToMidi(file, (stage, percent) => {
             const label = {
@@ -207,11 +208,11 @@ export default function PianoApp() {
               converting: "Building MIDI",
               done: "Done",
             }[stage] || stage;
-            setConverting({ stage: label, percent });
+            setConverting({ stage: label, percent, kind: "audio" });
           });
           // AI refinement: hand classification + noise removal via Claude Sonnet 4.6
           if (parsed.notes.length > 0) {
-            setConverting({ stage: `AI cleaning (${settings.difficulty})`, percent: 0 });
+            setConverting({ stage: `AI cleaning (${settings.difficulty})`, percent: 0, kind: "audio" });
             try {
               const refineRes = await axios.post(
                 `${API}/refine-midi`,
@@ -251,7 +252,7 @@ export default function PianoApp() {
               console.warn("LLM refinement failed, using unrefined notes", err);
               toast.warning("AI refinement skipped — using raw MIDI");
             }
-            setConverting({ stage: "AI cleaning", percent: 100 });
+            setConverting({ stage: "AI cleaning", percent: 100, kind: "audio" });
           }
           if (parsed.notes.length === 0) {
             toast.warning("No notes detected. Try a clearer melodic recording.");
@@ -303,6 +304,66 @@ export default function PianoApp() {
       }
     },
     [handleSelectSong, settings.difficulty],
+  );
+
+  const handleUploadSheet = useCallback(
+    async (file) => {
+      setConverting({ stage: "Uploading sheet", percent: 5, kind: "sheet" });
+      try {
+        const form = new FormData();
+        form.append("file", file);
+        setConverting({ stage: "AI reading notation", percent: 25, kind: "sheet" });
+        const res = await axios.post(`${API}/sheet-to-midi`, form, {
+          headers: { "Content-Type": "multipart/form-data" },
+          timeout: 300000,
+        });
+        const data = res.data;
+        setConverting({ stage: "Saving", percent: 90, kind: "sheet" });
+        const savedRes = await axios.post(`${API}/songs`, {
+          name: data.name || file.name.replace(/\.[^.]+$/, ""),
+          duration: data.duration,
+          notes: data.notes,
+          chords: data.chords || [],
+          tracks: data.tracks || [],
+          source: "sheet",
+          difficulty: settings.difficulty,
+        });
+        const saved = savedRes.data;
+        if (data.tracks?.length && (!saved.tracks || saved.tracks.length === 0)) {
+          saved.tracks = data.tracks;
+        }
+        setUserSongs((prev) => [saved, ...prev]);
+        handleSelectSong(saved);
+        toast.success(
+          `Sheet imported — ${data.notes.length} notes across ${data.page_count || 1} page(s) (${data.tempo_bpm || 100} BPM, ${data.key_signature || "C"})`,
+        );
+      } catch (err) {
+        console.error("Sheet-to-MIDI failed", err);
+        const msg = err.response?.data?.detail || err.message || "Sheet processing failed";
+        toast.error(msg);
+        throw err;
+      } finally {
+        setConverting(null);
+      }
+    },
+    [handleSelectSong, settings.difficulty],
+  );
+
+  const handleDownloadMidi = useCallback((song) => {
+    try {
+      downloadSongAsMidi(song);
+      toast.success(`Downloading ${song.name}.mid`);
+    } catch (err) {
+      console.error("MIDI download failed", err);
+      toast.error(err.message || "Could not download MIDI");
+    }
+  }, []);
+
+  const handleStackKey = useCallback(
+    (midi, family) => {
+      engine.playNote(midi, 0.5, 0.8, family || "piano");
+    },
+    [engine],
   );
 
   const handleDelete = useCallback(async (song) => {
@@ -513,7 +574,9 @@ export default function PianoApp() {
             currentSongId={currentSong?.id}
             onSelect={handleSelectSong}
             onUpload={handleUpload}
+            onUploadSheet={handleUploadSheet}
             onDelete={handleDelete}
+            onDownloadMidi={handleDownloadMidi}
             converting={converting}
             convertMode={convertMode}
             onConvertModeChange={setConvertMode}
@@ -653,6 +716,7 @@ export default function PianoApp() {
             trackColors={trackColors}
             mutedTracks={mutedTracks}
             soloedTrack={soloedTrack}
+            onKeyDown={handleStackKey}
           />
         </section>
       </main>

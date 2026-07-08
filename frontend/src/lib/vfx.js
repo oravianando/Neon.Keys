@@ -210,6 +210,23 @@ export function drawNote(ctx, x, y, w, h, style, color, alpha = 1) {
 }
 
 // ============ Piano rendering on canvas ============
+// Utility: convert #RRGGBB to {r,g,b}
+function hexRgb(hex) {
+  const m = /^#?([a-f0-9]{2})([a-f0-9]{2})([a-f0-9]{2})$/i.exec(hex);
+  if (!m) return { r: 200, g: 200, b: 200 };
+  return { r: parseInt(m[1], 16), g: parseInt(m[2], 16), b: parseInt(m[3], 16) };
+}
+function mix(cA, cB, t) {
+  return {
+    r: Math.round(cA.r + (cB.r - cA.r) * t),
+    g: Math.round(cA.g + (cB.g - cA.g) * t),
+    b: Math.round(cA.b + (cB.b - cA.b) * t),
+  };
+}
+function rgbStr(c) {
+  return `rgb(${c.r},${c.g},${c.b})`;
+}
+
 export function drawPiano(ctx, x0, y0, w, h, activeKeys, palette, keyFx, trackColors) {
   const WHITE = 52;
   const wKeyW = w / WHITE;
@@ -223,6 +240,16 @@ export function drawPiano(ctx, x0, y0, w, h, activeKeys, palette, keyFx, trackCo
     if (trackColors && meta.track != null && trackColors[meta.track]) return trackColors[meta.track];
     return defColor;
   };
+
+  // Inactive-key tints derived from palette[0] (matches rolling notes color).
+  // White keys → light desaturated tint. Black keys → dark tint.
+  const baseHex = (palette[0] && palette[0] !== "rainbow") ? palette[0] : "#00F0FF";
+  const paletteRgb = hexRgb(baseHex);
+  const whiteTop = mix(paletteRgb, { r: 255, g: 255, b: 255 }, 0.75);   // light
+  const whiteBot = mix(paletteRgb, { r: 255, g: 255, b: 255 }, 0.55);   // slightly darker
+  const blackTop = mix(paletteRgb, { r: 0, g: 0, b: 0 }, 0.78);         // near-black tinted
+  const blackBot = mix(paletteRgb, { r: 0, g: 0, b: 0 }, 0.92);
+
   ctx.save();
   ctx.translate(x0, y0);
   // White keys
@@ -242,7 +269,8 @@ export function drawPiano(ctx, x0, y0, w, h, activeKeys, palette, keyFx, trackCo
       ctx.shadowColor = c1;
       ctx.shadowBlur = keyFx === "pulse" ? 32 : 22;
     } else {
-      g.addColorStop(0, "#f2f2f2"); g.addColorStop(1, "#c8c8c8");
+      g.addColorStop(0, rgbStr(whiteTop));
+      g.addColorStop(1, rgbStr(whiteBot));
       ctx.shadowBlur = 0;
     }
     ctx.fillStyle = g;
@@ -273,7 +301,8 @@ export function drawPiano(ctx, x0, y0, w, h, activeKeys, palette, keyFx, trackCo
     } else {
       ctx.shadowBlur = 0;
       const g = ctx.createLinearGradient(0, 0, 0, bkH);
-      g.addColorStop(0, "#222"); g.addColorStop(1, "#000");
+      g.addColorStop(0, rgbStr(blackTop));
+      g.addColorStop(1, rgbStr(blackBot));
       ctx.fillStyle = g;
     }
     roundRect(ctx, bkX, 0, bkW, bkH, 2);

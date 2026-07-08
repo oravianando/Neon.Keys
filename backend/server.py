@@ -1,12 +1,14 @@
-from fastapi import FastAPI, APIRouter, HTTPException
+from fastapi import FastAPI, APIRouter, HTTPException, UploadFile, File, Form
 from dotenv import load_dotenv
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
+import io
 import logging
 import json
 import re
 import hashlib
+import base64
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional, Any
@@ -428,6 +430,247 @@ async def update_song(song_id: str, payload: EditSongRequest):
         raise HTTPException(404, "Song not found")
     doc = await db.songs.find_one({"id": song_id}, {"_id": 0})
     return doc
+
+
+# ---------- Sheet Music (Image/PDF) → MIDI ----------
+MAX_SHEET_PAGES = 30
+SHEET_IMAGE_MIME = {"image/png", "image/jpeg", "image/webp"}
+
+
+def _pdf_to_page_images(pdf_bytes: bytes) -> List[bytes]:
+    """Convert each page of a PDF to a PNG image (bytes). Returns up to MAX_SHEET_PAGES."""
+    import fitz  # PyMuPDF
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    images: List[bytes] = []
+    try:
+        # Render at ~150 DPI for good OMR accuracy
+        matrix = fitz.Matrix(2.0, 2.0)
+        for i, page in enumerate(doc):
+            if i >= MAX_SHEET_PAGES:
+                break
+            pix = page.get_pixmap(matrix=matrix, alpha=False)
+            images.append(pix.tobytes("png"))
+    finally:
+        doc.close()
+    return images
+
+
+def _normalize_image_bytes(raw: bytes, mime: str) -> tuple[bytes, str]:
+    """Ensure image is PNG/JPEG/WEBP. Convert exotic formats to PNG. Returns (bytes, mime)."""
+    from PIL import Image
+    if mime in SHEET_IMAGE_MIME:
+        # Re-open to strip animation frames / verify integrity, keep same format
+        try:
+            img = Image.open(io.BytesIO(raw))
+            if getattr(img, "is_animated", False):
+                img.seek(0)
+            if img.mode not in ("RGB", "L"):
+                img = img.convert("RGB")
+            buf = io.BytesIO()
+            fmt = "PNG" if mime == "image/png" else ("JPEG" if mime == "image/jpeg" else "WEBP")
+            img.save(buf, format=fmt)
+            return buf.getvalue(), mime
+        except Exception:
+            return raw, mime
+    # Fallback: convert to PNG
+    img = Image.open(io.BytesIO(raw)).convert("RGB")
+    buf = io.BytesIO()
+    img.save(buf, format="PNG")
+    return buf.getvalue(), "image/png"
+
+
+SHEET_MUSIC_SYSTEM = (
+    "You are a world-class piano-music-notation reader (OMR - Optical Music Recognition).\n"
+    "You will receive a single page image of piano sheet music. Extract EVERY note visible.\n\n"
+    "STRICT PIANO NOTATION RULES:\n"
+    "- The TOP staff (treble clef 𝄞) plays with the RIGHT hand.\n"
+    "- The BOTTOM staff (bass clef 𝄢) plays with the LEFT hand.\n"
+    "- Read the key signature (sharps/flats after the clef) and apply it to every note on those lines/spaces unless overridden by an accidental in the measure.\n"
+    "- Apply accidentals (♯ ♭ ♮) for the remainder of the measure they appear in.\n"
+    "- Respect the time signature (default 4/4 if absent). Notes MUST sum correctly per measure.\n"
+    "- Note values (in beats, quarter=1): whole=4, half=2, dotted-half=3, quarter=1, dotted-quarter=1.5, eighth=0.5, dotted-eighth=0.75, sixteenth=0.25.\n"
+    "- Ties: extend the previous note's duration; do NOT emit a new note.\n"
+    "- Chords: stacked noteheads at the same rhythmic position share time and duration; emit each pitch as a separate note event with the same time.\n"
+    "- Rests: skip, but advance time cursor for each hand.\n"
+    "- Repeats (𝄆 𝄇): expand once (play the repeated section twice).\n"
+    "- 1st/2nd endings (volta brackets): use 1st on repeat 1, 2nd on repeat 2.\n\n"
+    "OUTPUT FORMAT — return ONLY a JSON object, no prose, no markdown:\n"
+    "{\n"
+    '  "tempo_bpm": <int, use 100 if none visible>,\n'
+    '  "time_signature": "4/4",\n'
+    '  "key_signature": "C major",\n'
+    '  "beats_per_page": <total beats present on THIS page>,\n'
+    '  "notes": [\n'
+    '    {"midi": <21-108>, "beat": <float, beats from start of THIS page>, "beats_duration": <float>, "hand": "right"|"left", "velocity": <0.5-1.0>}\n'
+    "  ]\n"
+    "}\n\n"
+    "MIDI PITCH REFERENCE: C4=60 (middle C). Treble clef middle line = B4=71. Bass clef middle line = D3=50.\n"
+    "Be thorough — every notehead counts. If a note has no visible clef context, prefer right-hand if MIDI≥60."
+)
+
+
+async def _sheet_page_to_notes(image_bytes: bytes, mime: str, page_idx: int) -> dict:
+    """Send one page image to Claude Sonnet 4.6 vision and get structured note events (beat-based)."""
+    from emergentintegrations.llm.chat import LlmChat, UserMessage, ImageContent
+
+    image_b64 = base64.b64encode(image_bytes).decode("ascii")
+    image_content = ImageContent(image_base64=image_b64)
+
+    chat = LlmChat(
+        api_key=EMERGENT_LLM_KEY,
+        session_id=f"sheet-page-{uuid.uuid4()}",
+        system_message=SHEET_MUSIC_SYSTEM,
+    ).with_model("anthropic", "claude-sonnet-4-6")
+
+    user = UserMessage(
+        text=f"Extract every note on this sheet music page (page {page_idx + 1}). Return JSON only.",
+        file_contents=[image_content],
+    )
+    response_text = await chat.send_message(user)
+    parsed = _extract_json(response_text or "")
+    if not parsed or not isinstance(parsed.get("notes"), list):
+        return {"tempo_bpm": 100, "time_signature": "4/4", "key_signature": "C major", "beats_per_page": 0, "notes": []}
+    return parsed
+
+
+def _stitch_pages(pages: List[dict]) -> dict:
+    """Convert per-page beat-timed notes into a single time-ordered song using the first page's tempo."""
+    if not pages:
+        return {"tempo_bpm": 100, "notes": [], "duration": 1.0, "chords": []}
+
+    tempo_bpm = 100
+    time_signature = "4/4"
+    key_signature = "C major"
+    for p in pages:
+        try:
+            t = int(p.get("tempo_bpm") or 0)
+            if 30 <= t <= 240:
+                tempo_bpm = t
+                time_signature = p.get("time_signature") or time_signature
+                key_signature = p.get("key_signature") or key_signature
+                break
+        except Exception:
+            pass
+
+    beat_seconds = 60.0 / max(30, min(240, tempo_bpm))
+
+    all_notes: List[dict] = []
+    beat_cursor = 0.0
+
+    for p in pages:
+        page_notes = p.get("notes") or []
+        page_beats = 0.0
+        for n in page_notes:
+            try:
+                midi = int(n.get("midi"))
+                beat = float(n.get("beat", 0))
+                dur_beats = float(n.get("beats_duration", 1))
+                hand = n.get("hand") or ("right" if midi >= 60 else "left")
+                vel = float(n.get("velocity", 0.8))
+            except Exception:
+                continue
+            if midi < 21 or midi > 108:
+                continue
+            time_s = (beat_cursor + beat) * beat_seconds
+            dur_s = max(0.05, dur_beats * beat_seconds)
+            all_notes.append({
+                "midi": midi,
+                "time": time_s,
+                "duration": dur_s,
+                "velocity": max(0.3, min(1.0, vel)),
+                "hand": "left" if hand == "left" else "right",
+            })
+            page_beats = max(page_beats, beat + dur_beats)
+        try:
+            declared = float(p.get("beats_per_page") or 0)
+        except Exception:
+            declared = 0
+        beat_cursor += max(page_beats, declared)
+
+    all_notes.sort(key=lambda x: (x["time"], x["midi"]))
+    duration = max((n["time"] + n["duration"] for n in all_notes), default=1.0) + 1.0
+
+    return {
+        "tempo_bpm": tempo_bpm,
+        "time_signature": time_signature,
+        "key_signature": key_signature,
+        "notes": all_notes,
+        "duration": duration,
+    }
+
+
+@api_router.post("/sheet-to-midi")
+async def sheet_to_midi(file: UploadFile = File(...)):
+    """Convert an image (PNG/JPG/WEBP) or PDF of piano sheet music into MIDI notes using Claude Sonnet 4.6 Vision."""
+    if not EMERGENT_LLM_KEY:
+        raise HTTPException(500, "LLM key not configured")
+
+    raw = await file.read()
+    if not raw:
+        raise HTTPException(400, "Empty file")
+
+    filename = file.filename or "sheet"
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    ctype = (file.content_type or "").lower()
+
+    is_pdf = ext == "pdf" or ctype == "application/pdf"
+
+    try:
+        if is_pdf:
+            pages_raw = _pdf_to_page_images(raw)
+            pages = [(img, "image/png") for img in pages_raw]
+        else:
+            # Determine mime, then normalize
+            mime = ctype if ctype in SHEET_IMAGE_MIME else {
+                "png": "image/png", "jpg": "image/jpeg", "jpeg": "image/jpeg", "webp": "image/webp"
+            }.get(ext, "image/png")
+            norm_bytes, norm_mime = _normalize_image_bytes(raw, mime)
+            pages = [(norm_bytes, norm_mime)]
+    except Exception as e:
+        logger.exception("Failed to prepare sheet music pages")
+        raise HTTPException(400, f"Could not read file: {e}")
+
+    if not pages:
+        raise HTTPException(400, "No pages found in file")
+
+    if len(pages) > MAX_SHEET_PAGES:
+        pages = pages[:MAX_SHEET_PAGES]
+
+    page_results: List[dict] = []
+    for idx, (img_bytes, mime) in enumerate(pages):
+        try:
+            result = await _sheet_page_to_notes(img_bytes, mime, idx)
+            page_results.append(result)
+        except Exception as e:
+            logger.warning(f"Vision extraction failed for page {idx + 1}: {e}")
+            page_results.append({"notes": [], "beats_per_page": 0})
+
+    stitched = _stitch_pages(page_results)
+
+    if not stitched["notes"]:
+        raise HTTPException(422, "Could not extract any notes from the sheet music")
+
+    # Split into left/right tracks for multi-track playback
+    right = [n for n in stitched["notes"] if n["hand"] == "right"]
+    left = [n for n in stitched["notes"] if n["hand"] == "left"]
+    tracks = []
+    if right:
+        tracks.append({"id": "t0", "name": "Right Hand", "program": 0, "family": "piano", "isDrum": False, "notes": [{**n, "track": 0} for n in right]})
+    if left:
+        tracks.append({"id": "t1", "name": "Left Hand", "program": 0, "family": "piano", "isDrum": False, "notes": [{**n, "track": 1} for n in left]})
+
+    return {
+        "name": filename.rsplit(".", 1)[0],
+        "duration": stitched["duration"],
+        "notes": stitched["notes"],
+        "chords": [],
+        "tracks": tracks,
+        "tempo_bpm": stitched["tempo_bpm"],
+        "time_signature": stitched["time_signature"],
+        "key_signature": stitched["key_signature"],
+        "page_count": len(pages),
+        "source": "sheet",
+    }
 
 
 # ---------- AI video enhancements ----------

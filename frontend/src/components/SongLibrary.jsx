@@ -1,5 +1,5 @@
 import React, { useRef } from "react";
-import { Upload, Music2, Sparkles, Trash2, Loader2 } from "lucide-react";
+import { Upload, Music2, Sparkles, Trash2, Loader2, FileMusic, Download } from "lucide-react";
 import { toast } from "sonner";
 
 const CONVERT_MODES = [
@@ -13,12 +13,15 @@ export default function SongLibrary({
   currentSongId,
   onSelect,
   onUpload,
+  onUploadSheet,
   onDelete,
+  onDownloadMidi,
   converting,
   convertMode = "single",
   onConvertModeChange,
 }) {
   const inputRef = useRef(null);
+  const sheetInputRef = useRef(null);
 
   const handleFile = async (e) => {
     const file = e.target.files?.[0];
@@ -40,22 +43,55 @@ export default function SongLibrary({
     e.target.value = "";
   };
 
+  const handleSheetFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    const ext = file.name.split(".").pop().toLowerCase();
+    const isImage = ["png", "jpg", "jpeg", "webp"].includes(ext);
+    const isPdf = ext === "pdf";
+    if (!isImage && !isPdf) {
+      toast.error("Use a sheet music image (.png, .jpg, .webp) or PDF", { duration: 4000 });
+      e.target.value = "";
+      return;
+    }
+    try {
+      await onUploadSheet(file);
+    } catch (err) {
+      console.error(err);
+      toast.error(`Failed to import sheet: ${err.message || err}`);
+    }
+    e.target.value = "";
+  };
+
   return (
     <div className="glass-bright rounded-2xl p-5 flex flex-col gap-4 h-full overflow-hidden" data-testid="song-library">
-      <div className="flex items-center justify-between">
-        <div>
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
           <div className="text-[10px] tracking-[0.3em] uppercase text-white/40">Library</div>
           <h2 className="font-heading font-bold text-xl">Songs</h2>
         </div>
-        <button
-          onClick={() => inputRef.current?.click()}
-          disabled={!!converting}
-          className="flex items-center gap-2 px-3 py-2 border border-[#00F0FF] text-[#00F0FF] rounded-lg hover:bg-[#00F0FF] hover:text-black transition-all text-xs uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed"
-          data-testid="upload-button"
-        >
-          {converting ? <Loader2 size={14} className="animate-spin" /> : <Upload size={14} />}
-          {converting ? "Working" : "Upload"}
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={() => sheetInputRef.current?.click()}
+            disabled={!!converting}
+            className="flex items-center gap-1.5 px-2.5 py-2 border border-[#FF00E6] text-[#FF00E6] rounded-lg hover:bg-[#FF00E6] hover:text-black transition-all text-[10px] uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed"
+            data-testid="upload-sheet-button"
+            title="Sheet music image or PDF → MIDI"
+          >
+            {converting?.kind === "sheet" ? <Loader2 size={12} className="animate-spin" /> : <FileMusic size={12} />}
+            Sheet
+          </button>
+          <button
+            onClick={() => inputRef.current?.click()}
+            disabled={!!converting}
+            className="flex items-center gap-1.5 px-2.5 py-2 border border-[#00F0FF] text-[#00F0FF] rounded-lg hover:bg-[#00F0FF] hover:text-black transition-all text-[10px] uppercase tracking-wider disabled:opacity-50 disabled:cursor-not-allowed"
+            data-testid="upload-button"
+            title="Upload MIDI or Audio"
+          >
+            {converting && converting.kind !== "sheet" ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+            {converting && converting.kind !== "sheet" ? "Working" : "Upload"}
+          </button>
+        </div>
         <input
           ref={inputRef}
           type="file"
@@ -63,6 +99,14 @@ export default function SongLibrary({
           className="hidden"
           onChange={handleFile}
           data-testid="upload-input"
+        />
+        <input
+          ref={sheetInputRef}
+          type="file"
+          accept=".png,.jpg,.jpeg,.webp,.pdf,image/png,image/jpeg,image/webp,application/pdf"
+          className="hidden"
+          onChange={handleSheetFile}
+          data-testid="upload-sheet-input"
         />
       </div>
 
@@ -116,6 +160,7 @@ export default function SongLibrary({
                   active={s.id === currentSongId}
                   onSelect={onSelect}
                   onDelete={onDelete}
+                  onDownloadMidi={onDownloadMidi}
                 />
               ))}
             </div>
@@ -133,6 +178,7 @@ export default function SongLibrary({
                 song={s}
                 active={s.id === currentSongId}
                 onSelect={onSelect}
+                onDownloadMidi={onDownloadMidi}
               />
             ))}
           </div>
@@ -142,7 +188,7 @@ export default function SongLibrary({
   );
 }
 
-function SongRow({ song, active, onSelect, onDelete }) {
+function SongRow({ song, active, onSelect, onDelete, onDownloadMidi }) {
   return (
     <div
       className={`group flex items-center justify-between px-3 py-2.5 rounded-lg cursor-pointer transition-all border ${
@@ -161,17 +207,30 @@ function SongRow({ song, active, onSelect, onDelete }) {
           {Math.round(song.duration)}s • {song.notes.length} notes
         </div>
       </div>
-      {onDelete && (
-        <button
-          onClick={(e) => { e.stopPropagation(); onDelete(song); }}
-          className="p-1.5 rounded-md text-white/40 hover:bg-[#FF003C]/20 hover:text-[#FF003C] transition-all"
-          data-testid={`delete-song-${song.id}`}
-          aria-label="Delete"
-          title="Remove from library"
-        >
-          <Trash2 size={14} />
-        </button>
-      )}
+      <div className="flex items-center gap-1">
+        {onDownloadMidi && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onDownloadMidi(song); }}
+            className="p-1.5 rounded-md text-white/40 hover:bg-[#00F0FF]/20 hover:text-[#00F0FF] transition-all"
+            data-testid={`download-midi-${song.id}`}
+            aria-label="Download MIDI"
+            title="Download as .mid"
+          >
+            <Download size={14} />
+          </button>
+        )}
+        {onDelete && (
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(song); }}
+            className="p-1.5 rounded-md text-white/40 hover:bg-[#FF003C]/20 hover:text-[#FF003C] transition-all"
+            data-testid={`delete-song-${song.id}`}
+            aria-label="Delete"
+            title="Remove from library"
+          >
+            <Trash2 size={14} />
+          </button>
+        )}
+      </div>
     </div>
   );
 }
