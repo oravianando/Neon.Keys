@@ -30,11 +30,18 @@ Create a piano app, extract MIDI from a song, add song upload option, show rolli
 - 2026-02-08 v4: Chord detection strip, difficulty picker (beginner/intermediate/advanced), practice mode (L/R isolation), MIDI editor
 - 2026-02-08 v5: Video recorder with 20 VFX presets, canvas-composited MP4/WebM export at HD/FHD/4K
 - 2026-02-08 v6: Multi-track MIDI parsing, per-track instrument playback, TrackPianoStack visualization, file-size estimate & 4K duration warning
-- **2026-02-08 v7 (this iteration):**
+- **2026-02-08 v7:**
   - **Sheet Music → MIDI** — upload image (PNG/JPG/WEBP) or PDF; Claude Sonnet 4.6 Vision extracts every note with correct treble→right/bass→left hand assignment, tempo, time signature, key signature. Multi-page PDFs are stitched together sequentially.
   - **Download MIDI** — download icon on every song row (demo + uploaded) exports a `.mid` file via @tonejs/midi. Songs with hand tags get 2 tracks (Right/Left); multi-track songs preserve their tracks.
   - **Playable + aligned stacked pianos** — TrackPianoStack keyboards now span full width (aligned 1:1 with main piano); track name is a floating badge. Every key is a clickable `<button>` that triggers the track's own instrument family.
   - **Video export key tinting** — inactive white/black piano keys in the exported video are now tinted with the preset's palette[0] (matches rolling notes color) instead of pure white/black.
+- **2026-02-08 v8 (this iteration):**
+  - **Live particle VFX in preview canvas** — VideoRecorderModal preview loop now spawns and animates particles when notes trigger; cycling presets updates particle color.
+  - **Editable video title input** — replaced read-only `ai-title-preview` with editable `<input>` (`data-testid='video-title-input'`); title feeds both the on-screen title card and downloaded filename.
+  - **Enhanced sheet-music conversion** — PDF DPI 2.0x→3.0x, PIL autocontrast+sharpness pre-processing, expanded OMR prompt (ottava, grace notes, triplets, dynamics, D.C./D.S., chord detection). Now returns `chords` array. Parallel page processing (asyncio.gather + Semaphore(4)).
+  - **Backend refactor** — moved sheet-music helpers into `/app/backend/sheet_music.py` (server.py 770→620 lines).
+  - **Settings model** — added `convert_mode` field for future UI persistence.
+  - **VBR encoding hook** — `createVideoRecorder` accepts `bitrateMode: 'variable'` for smaller 4K files.
 
 ## Backlog
 - P1: End-to-end multi-mode WAV upload test (multi-track split with a stereo pop track)

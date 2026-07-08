@@ -165,7 +165,8 @@ class TestSheetToMidi:
         for cx in [150, 250, 350, 450]:
             d.ellipse([cx-10, 110, cx+10, 128], fill="black")
             d.ellipse([cx-10, 270, cx+10, 288], fill="black")
-        buf = io.BytesIO(); img.save(buf, format="PNG")
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
         files = {"file": ("simple.png", buf.getvalue(), "image/png")}
         r = client.post(f"{API}/sheet-to-midi", files=files, timeout=180)
         # Accept 200 or 422 (LLM may or may not extract from synthetic staff)
