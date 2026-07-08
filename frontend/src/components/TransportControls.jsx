@@ -1,5 +1,5 @@
 import React from "react";
-import { Play, Pause, Square, Gauge } from "lucide-react";
+import { Play, Pause, Square, Gauge, Disc3 } from "lucide-react";
 import { Slider } from "@/components/ui/slider";
 
 function fmt(t) {
@@ -19,6 +19,9 @@ export default function TransportControls({
   onSeek,
   onSpeedChange,
   songName,
+  hasOriginal,
+  playingOriginal,
+  onToggleOriginal,
 }) {
   const pct = duration ? (currentTime / duration) * 100 : 0;
 
@@ -60,6 +63,21 @@ export default function TransportControls({
           >
             <Square size={16} fill="currentColor" />
           </button>
+          {hasOriginal && (
+            <button
+              onClick={onToggleOriginal}
+              className={`h-11 px-4 rounded-full flex items-center gap-2 border transition-all text-xs uppercase tracking-wider ${
+                playingOriginal
+                  ? "bg-[#FF00E6] text-black border-[#FF00E6] shadow-[0_0_20px_rgba(255,0,230,0.6)]"
+                  : "border-[#FF00E6]/60 text-[#FF00E6] hover:bg-[#FF00E6] hover:text-black"
+              }`}
+              data-testid="play-original-button"
+              title="Play original uploaded audio"
+            >
+              <Disc3 size={14} className={playingOriginal ? "animate-spin" : ""} />
+              {playingOriginal ? "Stop Original" : "Original"}
+            </button>
+          )}
         </div>
       </div>
 

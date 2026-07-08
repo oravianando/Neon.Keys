@@ -37,7 +37,7 @@ export default function PianoKeyboard({ activeKeys, onKeyDown, showLabels, regis
               }}
               data-testid={`piano-key-${k.name.replace("#", "s")}`}
             >
-              {showLabels && k.name.startsWith("C") && (
+              {showLabels && (
                 <span className="key-label">{k.name}</span>
               )}
             </button>
@@ -79,7 +79,7 @@ export default function PianoKeyboard({ activeKeys, onKeyDown, showLabels, regis
                     }}
                     data-testid={`piano-key-${bk.name.replace("#", "s")}`}
                   >
-                    {showLabels && bk.name.startsWith("C") && (
+                    {showLabels && (
                       <span className="key-label">{bk.name}</span>
                     )}
                   </button>

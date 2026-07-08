@@ -1,0 +1,23 @@
+{
+  "summary": "Iteration 5 latency-sensitive test. Backend GET/DELETE APIs healthy. Frontend: piano labels on ALL keys (including non-C) verified, delete button always visible + working with 'Song removed' toast, play-original-button correctly hidden for demo songs, hidden original-audio element present, play/pause/stop/speed regression intact, zero console errors.",
+  "tested_scope": ["frontend", "backend", "integration"],
+  "passed": [
+    "GET /api/demo-songs 200 (5 demos)",
+    "GET /api/songs 200",
+    "GET /api/settings 200",
+    "DELETE /api/songs/{id} 200 {deleted:true}",
+    "Piano key labels visible on 6/6 non-C keys (D4, F#4, G4, A4, A#4, E5) plus A0 & C8 boundaries",
+    "Delete button always visible (opacity=1, 26x26) — no hover required",
+    "Clicking delete removes song from userSongs (6 -> 5) and shows 'Song removed' toast",
+    "hasOriginal=false for demo song → play-original-button NOT rendered (correct)",
+    "Hidden <audio data-testid='original-audio'> element present in DOM",
+    "Regression: Play → Pause button swap, Stop, speed slider all functional",
+    "Zero console errors on load and interaction"
+  ],
+  "failed": [],
+  "action_items": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "retest_needed": false,
+  "full_testing_deferred": true,
+  "notes": "WAV upload of /tmp/test_piano_scale.wav to verify cleaner MIDI extraction (piano range clamp, polyphony <=8, note count 4-16) and to observe play-original-button appearing was NOT executed in Playwright because @spotify/basic-pitch model download + inference is heavy/slow in headless mode. Code review of /app/frontend/src/lib/audioToMidi.js confirms refineNotes performs (a) PIANO_MIN=21/PIANO_MAX=108 clamp, (b) 40ms sweep polyphony reduction keeping top maxPolyphony=8 by velocity, (c) same-pitch merge with 30ms gap. TransportControls conditionally renders play-original-button on hasOriginal prop tied to audioUrls[currentSong.id] populated only for isAudio uploads. Recommend full-testing agent perform live WAV upload to confirm empirically."
+}

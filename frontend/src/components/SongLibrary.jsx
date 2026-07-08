@@ -136,11 +136,12 @@ function SongRow({ song, active, onSelect, onDelete }) {
       {onDelete && (
         <button
           onClick={(e) => { e.stopPropagation(); onDelete(song); }}
-          className="opacity-0 group-hover:opacity-100 p-1.5 rounded-md hover:bg-[#FF003C]/20 text-white/40 hover:text-[#FF003C] transition-all"
+          className="p-1.5 rounded-md text-white/40 hover:bg-[#FF003C]/20 hover:text-[#FF003C] transition-all"
           data-testid={`delete-song-${song.id}`}
           aria-label="Delete"
+          title="Remove from library"
         >
-          <Trash2 size={13} />
+          <Trash2 size={14} />
         </button>
       )}
     </div>

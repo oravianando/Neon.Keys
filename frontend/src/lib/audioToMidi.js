@@ -46,16 +46,17 @@ async function decodeAndResample(file) {
    - clamp to piano range (A0..C8)
    - filter out ultra-short fragments
    - merge overlapping same-pitch notes
+   - reduce simultaneous polyphony (keep loudest N — focus on main piano voice)
    - clean velocity
 */
-function refineNotes(noteEvents) {
+function refineNotes(noteEvents, maxPolyphony = 8) {
   // First pass: filter + normalize
   const filtered = [];
   for (const n of noteEvents) {
-    let midi = Math.round(n.pitchMidi);
+    const midi = Math.round(n.pitchMidi);
     if (midi < PIANO_MIN || midi > PIANO_MAX) continue;
     const duration = n.durationSeconds;
-    if (duration < 0.05) continue;
+    if (duration < 0.06) continue;
     const velocity = Math.max(0.25, Math.min(1, n.amplitude || 0.7));
     filtered.push({
       midi,
@@ -67,27 +68,21 @@ function refineNotes(noteEvents) {
 
   filtered.sort((a, b) => a.time - b.time || a.midi - b.midi);
 
-  // Merge notes: if same pitch and the next note starts before previous ends + 30ms gap, merge.
+  // Merge overlapping same-pitch notes
   const byPitch = new Map();
   for (const n of filtered) {
     if (!byPitch.has(n.midi)) byPitch.set(n.midi, []);
     byPitch.get(n.midi).push(n);
   }
-
   const merged = [];
   for (const [, arr] of byPitch) {
     arr.sort((a, b) => a.time - b.time);
     let cur = null;
     for (const n of arr) {
-      if (!cur) {
-        cur = { ...n };
-        continue;
-      }
+      if (!cur) { cur = { ...n }; continue; }
       const curEnd = cur.time + cur.duration;
       if (n.time - curEnd < 0.03) {
-        // overlap / near-adjacent → merge
-        const newEnd = Math.max(curEnd, n.time + n.duration);
-        cur.duration = newEnd - cur.time;
+        cur.duration = Math.max(curEnd, n.time + n.duration) - cur.time;
         cur.velocity = Math.max(cur.velocity, n.velocity);
       } else {
         merged.push(cur);
@@ -96,9 +91,40 @@ function refineNotes(noteEvents) {
     }
     if (cur) merged.push(cur);
   }
-
   merged.sort((a, b) => a.time - b.time);
-  return merged;
+
+  // Reduce polyphony: sweep timeline in 40ms steps, if more than maxPolyphony
+  // notes are active, drop the ones with lowest velocity (focuses on main voice).
+  const step = 0.04;
+  const kept = new Set();
+  const active = []; // { note, endsAt }
+  const events = merged.map((n) => ({ start: n.time, end: n.time + n.duration, note: n }));
+  events.sort((a, b) => a.start - b.start);
+
+  let t = 0;
+  const end = events.length > 0 ? events[events.length - 1].end : 0;
+  let idx = 0;
+  while (t <= end + step) {
+    // Add new-starting notes
+    while (idx < events.length && events[idx].start <= t) {
+      active.push({ note: events[idx].note, endsAt: events[idx].end });
+      idx++;
+    }
+    // Remove finished
+    for (let i = active.length - 1; i >= 0; i--) {
+      if (active[i].endsAt <= t) active.splice(i, 1);
+    }
+    if (active.length > 0) {
+      // Sort by velocity desc; keep top N
+      const sorted = [...active].sort((a, b) => b.note.velocity - a.note.velocity);
+      for (let i = 0; i < Math.min(maxPolyphony, sorted.length); i++) {
+        kept.add(sorted[i].note);
+      }
+    }
+    t += step;
+  }
+
+  return merged.filter((n) => kept.has(n));
 }
 
 /*

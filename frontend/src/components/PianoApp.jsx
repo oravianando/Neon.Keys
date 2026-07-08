@@ -29,6 +29,9 @@ export default function PianoApp() {
   const [settings, setSettings] = useState(DEFAULT_SETTINGS);
   const [keyRects, setKeyRects] = useState({});
   const [converting, setConverting] = useState(null);
+  const [audioUrls, setAudioUrls] = useState({}); // songId -> Blob URL
+  const [playingOriginal, setPlayingOriginal] = useState(false);
+  const audioElRef = useRef(null);
   const keyElsRef = useRef({});
   const boardWrapRef = useRef(null);
 
@@ -107,11 +110,33 @@ export default function PianoApp() {
 
   const handleSelectSong = useCallback(
     (song) => {
+      // Stop original if playing
+      if (audioElRef.current) {
+        audioElRef.current.pause();
+      }
+      setPlayingOriginal(false);
       setCurrentSong(song);
       engine.loadSong(song);
     },
     [engine],
   );
+
+  const toggleOriginal = useCallback(() => {
+    const el = audioElRef.current;
+    if (!el) return;
+    if (playingOriginal) {
+      el.pause();
+      setPlayingOriginal(false);
+    } else {
+      // pause MIDI playback if running
+      engine.pause();
+      el.currentTime = 0;
+      el.play().then(() => setPlayingOriginal(true)).catch((err) => {
+        console.warn("Original audio playback failed", err);
+        toast.error("Could not play original audio");
+      });
+    }
+  }, [engine, playingOriginal]);
 
   const handleUpload = useCallback(
     async (file, isAudio) => {
@@ -155,10 +180,18 @@ export default function PianoApp() {
         });
         const saved = res.data;
         setUserSongs((prev) => [saved, ...prev]);
+        if (isAudio) {
+          const blobUrl = URL.createObjectURL(file);
+          setAudioUrls((prev) => ({ ...prev, [saved.id]: blobUrl }));
+        }
         handleSelectSong(saved);
       } catch (err) {
         console.warn("Failed to persist song to backend, using local session", err);
         setUserSongs((prev) => [parsed, ...prev]);
+        if (isAudio) {
+          const blobUrl = URL.createObjectURL(file);
+          setAudioUrls((prev) => ({ ...prev, [parsed.id]: blobUrl }));
+        }
         handleSelectSong(parsed);
       }
     },
@@ -172,7 +205,14 @@ export default function PianoApp() {
       console.warn("Failed to delete song on server", err);
     }
     setUserSongs((prev) => prev.filter((s) => s.id !== song.id));
+    setAudioUrls((prev) => {
+      if (prev[song.id]) URL.revokeObjectURL(prev[song.id]);
+      const { [song.id]: _, ...rest } = prev;
+      return rest;
+    });
     if (currentSong?.id === song.id) {
+      if (audioElRef.current) audioElRef.current.pause();
+      setPlayingOriginal(false);
       setCurrentSong(null);
       engine.loadSong({ id: "empty", name: "", duration: 1, notes: [] });
     }
@@ -243,6 +283,17 @@ export default function PianoApp() {
             onSeek={engine.seek}
             onSpeedChange={(s) => setSettings((prev) => ({ ...prev, speed: s }))}
             songName={currentSong?.name}
+            hasOriginal={!!(currentSong && audioUrls[currentSong.id])}
+            playingOriginal={playingOriginal}
+            onToggleOriginal={toggleOriginal}
+          />
+          <audio
+            ref={audioElRef}
+            src={currentSong ? audioUrls[currentSong.id] : undefined}
+            onEnded={() => setPlayingOriginal(false)}
+            onPause={() => setPlayingOriginal(false)}
+            className="hidden"
+            data-testid="original-audio"
           />
 
           {/* Rolling notes + piano stack */}
