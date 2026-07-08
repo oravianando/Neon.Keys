@@ -35,7 +35,11 @@ Create a piano app, extract MIDI from a song, add song upload option, show rolli
   - **Download MIDI** — download icon on every song row (demo + uploaded) exports a `.mid` file via @tonejs/midi. Songs with hand tags get 2 tracks (Right/Left); multi-track songs preserve their tracks.
   - **Playable + aligned stacked pianos** — TrackPianoStack keyboards now span full width (aligned 1:1 with main piano); track name is a floating badge. Every key is a clickable `<button>` that triggers the track's own instrument family.
   - **Video export key tinting** — inactive white/black piano keys in the exported video are now tinted with the preset's palette[0] (matches rolling notes color) instead of pure white/black.
-- **2026-02-08 v13 (this iteration):**
+- **2026-02-08 v14 (this iteration):**
+  - **🐛 FIX: Video Recorder stop button** — audio kept playing after clicking Stop because pre-scheduled `triggerAttackRelease` calls remain on the audio timeline even after `sampler.releaseAll()`. Fix: on stop, set `sampler.volume.value = -Infinity` to silence pending scheduled notes, then restore to 0dB after 250ms. Verified end-to-end.
+  - **Default resolution → FHD 1080p** — new users get 1920×1080 out of the box (was 720p).
+  - **Default subtitle → `- Chitoos Media`** — branded default for all recordings; AI Enhance no longer overwrites it (only title + preset).
+- **2026-02-08 v13:**
   - **Trim Silent Gaps** — new button in the MIDI Edit toolbar (`data-testid='compress-gaps'`) that sweeps the timeline, finds silent stretches > 0.3s (no notes active) and pulls subsequent notes back so each gap is exactly 0.15s. Chord markers are shifted with the notes to preserve alignment. Song `duration` is auto-updated.
   - **Documentation** — new `/app/docs/` folder with 7 markdown files (~1200 lines) and 6 screenshots covering README, Architecture (with Mermaid diagrams), Backend API, Frontend components, Feature list, User guide, and API reference.
 - **2026-02-08 v12:**
