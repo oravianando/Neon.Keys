@@ -109,40 +109,51 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [aiTitle, song?.id]);
 
-  // Preview render loop (idle mode)
+  // Preview render loop (idle mode).
+  // NOTE: Radix DialogContent uses a portal + presence animation, so canvasRef
+  // may be null on the very first effect pass. Retry on next animation frame
+  // until the canvas is mounted.
   useEffect(() => {
     if (!open) return;
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    const dims = dimsForResolution(resolutionId);
-    dimsRef.current = dims;
-    canvas.width = dims.w;
-    canvas.height = dims.h;
+    let cancelled = false;
+    let rafInit = null;
 
-    let previewT = 0;
-    const previewActive = new Map();
-    previewParticlesRef.current = [];
-    previewPrevActiveRef.current = new Set();
-
-    const previewLoop = () => {
-      if (state === "recording") return;
-      previewT += 1 / 60;
-      previewActive.clear();
-      const cycleDur = song?.duration || 4;
-      const localT = previewT % cycleDur;
-      if (song?.notes) {
-        for (const n of song.notes) {
-          if (n.time <= localT && localT < n.time + n.duration) {
-            previewActive.set(n.midi, {
-              hand: n.hand || (n.midi < 60 ? "left" : "right"),
-              track: n.track !== undefined ? String(n.track) : "0",
-            });
-          }
-        }
-      } else {
-        [60, 64, 67, 72].forEach((m) => (previewT % 2 < 1 ? previewActive.set(m, { hand: "right", track: "0" }) : null));
+    const setup = () => {
+      if (cancelled) return;
+      const canvas = canvasRef.current;
+      if (!canvas) {
+        rafInit = requestAnimationFrame(setup);
+        return;
       }
+      const ctx = canvas.getContext("2d");
+      const dims = dimsForResolution(resolutionId);
+      dimsRef.current = dims;
+      canvas.width = dims.w;
+      canvas.height = dims.h;
+
+      let previewT = 0;
+      const previewActive = new Map();
+      previewParticlesRef.current = [];
+      previewPrevActiveRef.current = new Set();
+
+      const previewLoop = () => {
+        if (cancelled || state === "recording") return;
+        previewT += 1 / 60;
+        previewActive.clear();
+        const cycleDur = song?.duration || 4;
+        const localT = previewT % cycleDur;
+        if (song?.notes) {
+          for (const n of song.notes) {
+            if (n.time <= localT && localT < n.time + n.duration) {
+              previewActive.set(n.midi, {
+                hand: n.hand || (n.midi < 60 ? "left" : "right"),
+                track: n.track !== undefined ? String(n.track) : "0",
+              });
+            }
+          }
+        } else {
+          [60, 64, 67, 72].forEach((m) => (previewT % 2 < 1 ? previewActive.set(m, { hand: "right", track: "0" }) : null));
+        }
 
       // Spawn particles when a key transitions from inactive → active
       const prev = previewPrevActiveRef.current;
@@ -160,9 +171,17 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
 
       renderFrame(ctx, chosen, previewT, localT, song, previewActive, previewParticlesRef.current, null, dims);
       if (state !== "recording") rafRef.current = requestAnimationFrame(previewLoop);
+      };  // end previewLoop
+
+      rafRef.current = requestAnimationFrame(previewLoop);
+    };  // end setup
+
+    rafInit = requestAnimationFrame(setup);
+    return () => {
+      cancelled = true;
+      if (rafInit) cancelAnimationFrame(rafInit);
+      if (rafRef.current) cancelAnimationFrame(rafRef.current);
     };
-    rafRef.current = requestAnimationFrame(previewLoop);
-    return () => cancelAnimationFrame(rafRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open, preset, song?.id, resolutionId, trackColors]);
 
