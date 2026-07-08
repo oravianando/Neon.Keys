@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from "react";
-import { X, Plus, Minus, Trash2, Save, ArrowUp, ArrowDown, GripHorizontal } from "lucide-react";
+import { X, Plus, Minus, Trash2, Save, ArrowUp, ArrowDown, GripHorizontal, Scissors } from "lucide-react";
 import { midiToNoteName } from "@/lib/piano";
 
 /*
@@ -129,6 +129,7 @@ export function EditToolbar({
   onSave,
   onCancel,
   onGlobalShift,
+  onCompressGaps,
   isDirty,
   saving,
 }) {
@@ -224,6 +225,16 @@ export function EditToolbar({
         >
           +1
         </button>
+        {onCompressGaps && (
+          <button
+            onClick={onCompressGaps}
+            className="ml-1 flex items-center gap-1 px-2 h-8 rounded border border-[#00F0FF]/40 text-[#00F0FF] text-xs uppercase tracking-wider hover:bg-[#00F0FF] hover:text-black transition-all"
+            data-testid="compress-gaps"
+            title="Remove silent gaps longer than 0.3s"
+          >
+            <Scissors size={12} /> Trim Gaps
+          </button>
+        )}
       </div>
 
       <div className="ml-auto flex items-center gap-2">

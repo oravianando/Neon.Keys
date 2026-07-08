@@ -542,6 +542,91 @@ export default function PianoApp() {
     });
   }, [currentSong, engine]);
 
+  // Trim silent gaps longer than GAP_THRESHOLD by pulling subsequent notes
+  // back so the gap becomes exactly MIN_GAP. Sweeps across the timeline.
+  const compressGaps = useCallback(() => {
+    if (!currentSong || !currentSong.notes?.length) return;
+    const GAP_THRESHOLD = 0.3;   // seconds — only trim gaps larger than this
+    const MIN_GAP = 0.15;        // seconds — target gap size after trimming
+
+    // Build occupancy timeline. At each moment we know if ANY note is sounding.
+    // We scan events (attack / release) time-ordered.
+    const events = [];
+    currentSong.notes.forEach((n, idx) => {
+      events.push({ t: n.time,               type: "on",  idx });
+      events.push({ t: n.time + n.duration,  type: "off", idx });
+    });
+    events.sort((a, b) => a.t - b.t || (a.type === "off" ? -1 : 1));
+
+    // Find silent gaps: intervals where active count is 0.
+    let active = 0;
+    let lastOffTime = 0; // when the last note ended (or 0 initially)
+    const gaps = [];    // [{start, end, size}]
+    let firstOnSeen = false;
+    for (const ev of events) {
+      if (ev.type === "on") {
+        // If we were silent and this is not the very first note,
+        // record the gap (from lastOffTime → ev.t).
+        if (active === 0 && firstOnSeen) {
+          const size = ev.t - lastOffTime;
+          if (size > GAP_THRESHOLD) {
+            gaps.push({ start: lastOffTime, end: ev.t, size });
+          }
+        }
+        // If this IS the very first note, treat any preceding silence
+        // (t=0 → n.time) as a lead-in gap too.
+        if (!firstOnSeen && ev.t > GAP_THRESHOLD) {
+          gaps.push({ start: 0, end: ev.t, size: ev.t });
+        }
+        firstOnSeen = true;
+        active += 1;
+      } else {
+        active -= 1;
+        if (active === 0) lastOffTime = ev.t;
+      }
+    }
+
+    if (gaps.length === 0) {
+      toast.info("No trimmable gaps found");
+      return;
+    }
+
+    // Compute total offset accumulated to shift each note back.
+    // For every note, offset = sum of (gap.size - MIN_GAP) for gaps ending
+    // BEFORE the note's start time.
+    const totalTrimmed = gaps.reduce((s, g) => s + (g.size - MIN_GAP), 0);
+
+    const notesShifted = currentSong.notes
+      .map((n) => {
+        let offset = 0;
+        for (const g of gaps) {
+          if (g.end <= n.time) offset += (g.size - MIN_GAP);
+          else break;
+        }
+        return { ...n, time: Math.max(0, n.time - offset) };
+      })
+      .sort((a, b) => a.time - b.time);
+
+    // Also shift chord markers so they stay aligned with the notes.
+    const chordsShifted = (currentSong.chords || []).map((c) => {
+      let offset = 0;
+      for (const g of gaps) {
+        if (g.end <= c.time) offset += (g.size - MIN_GAP);
+        else break;
+      }
+      return { ...c, time: Math.max(0, c.time - offset) };
+    });
+
+    const newDuration = Math.max(0.5, currentSong.duration - totalTrimmed);
+    const updated = { ...currentSong, notes: notesShifted, chords: chordsShifted, duration: newDuration };
+    setCurrentSong(updated);
+    engine.loadSong(updated);
+    setSelectedNoteIdx(null);
+    toast.success(
+      `Trimmed ${gaps.length} gap${gaps.length > 1 ? "s" : ""} — saved ${totalTrimmed.toFixed(1)}s`,
+    );
+  }, [currentSong, engine]);
+
   const globalShift = useCallback((delta) => {
     if (!currentSong) return;
     setCurrentSong((prev) => {
@@ -685,6 +770,7 @@ export default function PianoApp() {
               onSave={saveEdits}
               onCancel={() => exitEditMode(false)}
               onGlobalShift={globalShift}
+              onCompressGaps={compressGaps}
               isDirty={isDirty}
               saving={savingEdit}
             />

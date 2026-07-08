@@ -35,7 +35,10 @@ Create a piano app, extract MIDI from a song, add song upload option, show rolli
   - **Download MIDI** — download icon on every song row (demo + uploaded) exports a `.mid` file via @tonejs/midi. Songs with hand tags get 2 tracks (Right/Left); multi-track songs preserve their tracks.
   - **Playable + aligned stacked pianos** — TrackPianoStack keyboards now span full width (aligned 1:1 with main piano); track name is a floating badge. Every key is a clickable `<button>` that triggers the track's own instrument family.
   - **Video export key tinting** — inactive white/black piano keys in the exported video are now tinted with the preset's palette[0] (matches rolling notes color) instead of pure white/black.
-- **2026-02-08 v12 (this iteration):**
+- **2026-02-08 v13 (this iteration):**
+  - **Trim Silent Gaps** — new button in the MIDI Edit toolbar (`data-testid='compress-gaps'`) that sweeps the timeline, finds silent stretches > 0.3s (no notes active) and pulls subsequent notes back so each gap is exactly 0.15s. Chord markers are shifted with the notes to preserve alignment. Song `duration` is auto-updated.
+  - **Documentation** — new `/app/docs/` folder with 7 markdown files (~1200 lines) and 6 screenshots covering README, Architecture (with Mermaid diagrams), Backend API, Frontend components, Feature list, User guide, and API reference.
+- **2026-02-08 v12:**
   - **Rainbow-flow VFX** — notes now use pitch-class based chromatic hue rotation (each pitch = distinct color on the color wheel) with time-based drift for animated "flow". Also fixed a hard crash where the "rainbow" palette marker leaked into CanvasGradient.addColorStop (`hexA()` + `drawPiano` now guard against non-hex palette entries).
   - **Per-track solo/mute (video export)** — new Track Mixer panel in VideoRecorderModal (only shown for multi-track songs). Each track shows S (solo) + M (mute) buttons. Muted tracks are excluded from BOTH audio pre-scheduling AND visual render (via `visibleSong` memo). Reset button clears all mute/solo state. S/M buttons disabled during recording.
   - **Chord playback preview** — ChordTutorial now has a small circular Play button (`data-testid='chord-tutorial-play'`) inside the chord pill. Clicking triggers all chord tones via `engine.playNote()` with a 15ms arpeggio stagger.
