@@ -219,31 +219,49 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
     activeReleasesRef.current = [];
     particlesRef.current = [];
     noteIdxRef.current = 0;
-    playStartRef.current = performance.now() / 1000;
 
+    // Start the recorder first so audio+video capture begin together, then
+    // capture the audio-context clock as our master timeline. Using Tone.now()
+    // (== audio ctx currentTime) for BOTH visual and audio guarantees zero drift
+    // even under GC pauses / dropped frames.
     recorder.start();
+    // Small wait so MediaRecorder's audio track actually begins receiving samples.
+    await new Promise((r) => setTimeout(r, 40));
+
     const useIntro = showTitleCard && (videoTitle || song.name);
     const introDur = useIntro ? INTRO_DURATION : 0;
     const duration = introDur + song.duration + 1;
 
+    // T0 in audio-context seconds. Elapsed = Tone.now() - T0.
+    playStartRef.current = Tone.now();
+
+    // Pre-schedule ALL notes on the audio timeline at exact absolute times.
+    // This decouples audio timing from the RAF loop entirely — audio plays at
+    // sample-accurate times regardless of when the visual loop fires.
+    for (const n of song.notes) {
+      const when = playStartRef.current + introDur + n.time;
+      const dur = Math.max(n.duration, 0.1);
+      const noteName = Tone.Frequency(n.midi, "midi").toNote();
+      try {
+        sampler.triggerAttackRelease(noteName, dur, when, n.velocity);
+      } catch (e) { /* ignore invalid note */ }
+    }
+
     const loop = () => {
-      const now = performance.now() / 1000;
-      const elapsed = now - playStartRef.current;
+      // Master clock = audio context time. Same clock the sampler used above.
+      const elapsed = Tone.now() - playStartRef.current;
       const songTime = Math.max(0, elapsed - introDur);
       timeRef.current = elapsed;
       setProgress(Math.min(100, (elapsed / duration) * 100));
 
-      // Trigger notes (only after intro finishes)
+      // Advance the visual "active keys" state so the piano lights up in sync
+      // with the pre-scheduled audio.
       if (elapsed >= introDur) {
         while (
           noteIdxRef.current < song.notes.length &&
           song.notes[noteIdxRef.current].time <= songTime
         ) {
           const n = song.notes[noteIdxRef.current];
-          const noteName = Tone.Frequency(n.midi, "midi").toNote();
-          try {
-            sampler.triggerAttackRelease(noteName, Math.max(n.duration, 0.1), undefined, n.velocity);
-          } catch (e) { /* ignore */ }
           const trackId = n.track !== undefined ? String(n.track) : "0";
           const hand = n.hand || (n.midi < 60 ? "left" : "right");
           activeKeysRef.current.set(n.midi, { hand, track: trackId });
@@ -290,6 +308,9 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
 
   const stopRecording = async () => {
     cancelAnimationFrame(rafRef.current);
+    // Silence any pre-scheduled notes that haven't fired yet (relevant if the
+    // user cancels mid-recording).
+    try { sampler?.releaseAll?.(); } catch (e) { /* ignore */ }
     if (recorderRef.current) {
       try {
         const blob = await recorderRef.current.stop();

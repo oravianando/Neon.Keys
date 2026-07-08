@@ -55,6 +55,23 @@ class TestRegression:
         # Restore default
         client.put(f"{API}/settings", json={"convert_mode": "single"}, timeout=30)
 
+    def test_settings_chord_tutorial_default_and_persist(self, client):
+        """Iteration 16: chord_tutorial bool field default=true, PUT persists."""
+        g = client.get(f"{API}/settings", timeout=30)
+        assert g.status_code == 200
+        data = g.json()
+        assert "chord_tutorial" in data, f"chord_tutorial missing: {list(data.keys())}"
+        assert isinstance(data["chord_tutorial"], bool)
+        # Persist false
+        r = client.put(f"{API}/settings", json={"chord_tutorial": False}, timeout=30)
+        assert r.status_code == 200
+        g2 = client.get(f"{API}/settings", timeout=30)
+        assert g2.json().get("chord_tutorial") is False
+        # Restore to true
+        client.put(f"{API}/settings", json={"chord_tutorial": True}, timeout=30)
+        g3 = client.get(f"{API}/settings", timeout=30)
+        assert g3.json().get("chord_tutorial") is True
+
     def test_song_create_delete(self, client):
         payload = {
             "name": "TEST_regression_song",

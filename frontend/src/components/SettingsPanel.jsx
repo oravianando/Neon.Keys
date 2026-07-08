@@ -118,6 +118,18 @@ export default function SettingsPanel({ settings, onChange }) {
               data-testid="sustain-switch"
             />
           </div>
+
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-sm font-semibold">Chord Tutorial</div>
+              <div className="text-[10px] text-white/40 font-mono uppercase tracking-wider">Floating chord shape above piano</div>
+            </div>
+            <Switch
+              checked={settings.chord_tutorial !== false}
+              onCheckedChange={(v) => update("chord_tutorial", v)}
+              data-testid="chord-tutorial-switch"
+            />
+          </div>
         </div>
       </SheetContent>
     </Sheet>

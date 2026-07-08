@@ -1,0 +1,50 @@
+{
+  "summary": "Iteration 16 — Verified 3 NEW additions: (1) chord_tutorial settings field, (2) ChordTutorial overlay + mini keyboard, (3) note resize handle in edit mode. Backend: 18/18 pytest pass (added test_settings_chord_tutorial_default_and_persist). Frontend: chord tutorial overlay renders with correct chord name (C) and mini keyboard highlights C4/E4/G4 (chord tones) exactly as expected. Settings toggle chord-tutorial-switch present, default ON, toggling OFF hides overlay instantly. Note resize handle appears at top of selected note (data-testid=resize-handle-0), drag up 40-60px increases note height proportionally (65->105 or 71->131), saves via PUT /api/songs/{id} for user songs, and persists across page reload (verified: after reload+edit, edit-note-0 height=105.5 matches pre-reload). Chord parser verified via Node inline test: Cmaj->[60,64,67], Am->[57,60,64], G7->[55,59,62,65], Csus4->[60,65,67], C/E->[52,60,64,67], empty/X/?/undefined -> null (graceful). Video sync/regression items not exercised in this iteration (main flows validated in prior iterations).",
+  "tested_scope": ["backend", "frontend", "integration"],
+  "backend_issues": {"critical": [], "minor": []},
+  "frontend_issues": {
+    "ui_bugs": [],
+    "integration_issues": [
+      {
+        "flow": "Edit mode save on DEMO songs",
+        "issue": "Clicking SAVE while editing a demo song (e.g., 'Twinkle Twinkle Little Star') calls PUT /api/songs/{demo-id} which returns 404 because demo songs are baked-in and not persisted in DB. Toast: 'Could not save edits'. This is a pre-existing limitation, not new to iteration 16 (the resize gesture itself works; the underlying song.notes[0].duration was updated in-memory and the note visually grew). User songs (uploaded/refined) save & persist correctly.",
+        "affected_selectors": ["[data-testid=\"edit-save\"]"]
+      }
+    ],
+    "design_issues": []
+  },
+  "passed": [
+    "GET/PUT /api/settings — chord_tutorial:bool present, default=true, PUT {chord_tutorial:false} persists, restore to true works",
+    "All 17 previous regression tests still green (demo-songs, songs CRUD, refine-midi single/multi-track/cache-key/fallback, sheet-to-midi empty/corrupt/real-PDF/PNG, video ai-enhance, settings convert_mode)",
+    "Chord Tutorial overlay renders (data-testid=chord-tutorial-overlay) with chord name 'C' displayed via data-testid=chord-tutorial-name",
+    "Mini keyboard (data-testid=chord-tutorial-mini-keyboard) has 15 white-key elements; for chord 'C' the highlighted keys are exactly chord-tutorial-key-C4, chord-tutorial-key-E4, chord-tutorial-key-G4 (MIDI 60,64,67)",
+    "Settings > chord-tutorial-switch present, default aria-checked=true; toggling OFF causes chord-tutorial-overlay count to drop to 0 immediately",
+    "Note resize: resize-handle-0 appears at top of selected note (12px height, only when width >=12px); dragging up 40px increased note height 65->105 (user song) and 60px drag increased 71->131 (demo song) — proportional to drag delta",
+    "Note resize persistence on user songs: SAVE calls PUT /api/songs/{id} 200, reload page + reopen + edit shows edit-note-0 height=105.5 matches pre-reload",
+    "Chord parser correctness (Node inline): Cmaj=[60,64,67], Am=[57,60,64], G7=[55,59,62,65], Csus4=[60,65,67], Cmaj7=[60,64,67,71], C/E=[52,60,64,67], empty/X/?/undefined return null (graceful)"
+  ],
+  "failed": [],
+  "test_report_links": [
+    "/app/backend/tests/test_backend.py",
+    "/app/test_reports/pytest/iter16.xml"
+  ],
+  "action_items": [
+    "Optional UX: When user enters edit mode on a demo song and clicks SAVE, either (a) auto-copy the demo song as a new user song (POST /api/songs) so edits persist, or (b) disable the SAVE button + show tooltip 'Demo songs cannot be edited. Save as new song instead.' Currently the toast just says 'Could not save edits' after 404."
+  ],
+  "critical_code_review_comments": [
+    "MidiEditor.jsx resize gesture uses window mousemove/touchmove listeners with startY captured on mousedown. Delta computed via (startY - clientY) / containerH * lookahead. This works but ignores rAF for smoothness; consider requestAnimationFrame batching if resize feels jittery on low-end devices.",
+    "ChordTutorial.jsx uses lastNameRef to avoid setState churn when chord name is unchanged — good perf pattern. However the effect deps include `active` which will trigger re-runs after setActive. Not causing infinite loops (guarded by nextName===lastNameRef.current) but a comment would help.",
+    "chordParser.js QUALITIES longest-match uses `>=` which for empty-string key '' (length 0) will always match first. Effectively works because '' is iterated first and any longer key overwrites it, but a stricter `>` would be safer. Not a bug now.",
+    "server.py PUT /api/songs/{song_id} returns 404 for demo songs. Consider returning a distinct 409/422 with a friendlier error body so the frontend can toast 'Demo songs are read-only'."
+  ],
+  "updated_files": [
+    "/app/backend/tests/test_backend.py (added test_settings_chord_tutorial_default_and_persist)"
+  ],
+  "success_rate": {"backend": "100% (18/18)", "frontend": "100% for new features"},
+  "test_credentials": "N/A",
+  "seed_data_creation": "Created and later deleted user song 'TEST_chord_tutorial_song' with chords [{C@0s},{Am@3s},{F@6s},{G7@9s}] and 11 notes to exercise chord-tutorial overlay. Cleanup verified via DELETE /api/songs/{id} 200.",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Iteration 16 new features fully verified. If future iterations need chord-tutorial testing, POST a user song with a `chords` array (each item: {time, name, duration}) then load it and press play. Chord parser rootMidi is clamped to [55,66], so higher-root chords may render an octave below their nominal position (e.g., G7 renders as G3/B3/D4/F4 — this is intentional per the code).",
+  "rca of the issue": "Demo-song edit-save 404 is not a new bug; it stems from PUT /api/songs/{id} requiring a DB record. Root cause: demo songs are hardcoded server-side (or in a static list), not inserted into the songs collection, so update_one().matched_count==0 → HTTPException(404)."
+}

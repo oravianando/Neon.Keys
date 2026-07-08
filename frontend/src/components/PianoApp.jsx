@@ -13,6 +13,7 @@ import { downloadSongAsMidi } from "@/lib/midiExport";
 import ChordStrip from "@/components/ChordStrip";
 import ToolBar from "@/components/ToolBar";
 import { MidiEditorOverlay, EditToolbar } from "@/components/MidiEditor";
+import ChordTutorial from "@/components/ChordTutorial";
 import VideoRecorderModal from "@/components/VideoRecorderModal";
 import InstrumentControls from "@/components/MultiInstrumentStack";
 import TrackPianoStack from "@/components/TrackPianoStack";
@@ -32,6 +33,17 @@ const DEFAULT_SETTINGS = {
   lookahead: 4.0,
   difficulty: "intermediate",
   practice_mode: "both",
+  chord_tutorial: true,
+};
+
+// Note-color palette-name → hex mapping (matches RollingNotes palette).
+const NOTE_COLORS_HEX = {
+  cyan:   "#00F0FF",
+  pink:   "#FF00E6",
+  green:  "#7CFF9A",
+  purple: "#B388FF",
+  gold:   "#FFD700",
+  rainbow: "#00F0FF",
 };
 
 export default function PianoApp() {
@@ -513,6 +525,24 @@ export default function PianoApp() {
     setSelectedNoteIdx(null);
   }, [selectedNoteIdx, currentSong, engine]);
 
+  // Resize a note's duration (drag the top edge in the editor).
+  // newDuration is in seconds; clamped to [0.05, 30].
+  const resizeNote = useCallback((idx, newDuration) => {
+    if (idx == null || !currentSong) return;
+    const clamped = Math.max(0.05, Math.min(30, newDuration));
+    setCurrentSong((prev) => {
+      if (!prev) return prev;
+      const notes = prev.notes.map((n, i) =>
+        i === idx ? { ...n, duration: clamped } : n,
+      );
+      // Recompute duration if resizing extended song end
+      const songEnd = Math.max(...notes.map((n) => n.time + n.duration)) + 1;
+      const updated = { ...prev, notes, duration: Math.max(prev.duration, songEnd) };
+      engine.loadSong(updated);
+      return updated;
+    });
+  }, [currentSong, engine]);
+
   const globalShift = useCallback((delta) => {
     if (!currentSong) return;
     setCurrentSong((prev) => {
@@ -680,6 +710,7 @@ export default function PianoApp() {
                   keyRects={keyRects}
                   selectedIdx={selectedNoteIdx}
                   onSelectIdx={setSelectedNoteIdx}
+                  onResize={resizeNote}
                 />
               )}
               {currentSong && currentSong.notes?.some((n) => n.hand) && !editMode && (
@@ -694,6 +725,12 @@ export default function PianoApp() {
                   </div>
                 </div>
               )}
+              <ChordTutorial
+                chords={currentSong?.chords}
+                currentTime={engine.currentTime}
+                visible={settings.chord_tutorial !== false && !editMode && (currentSong?.chords?.length > 0)}
+                noteColor={NOTE_COLORS_HEX[settings.note_color] || NOTE_COLORS_HEX.cyan}
+              />
               {!currentSong && (
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                   <div className="text-center px-6">

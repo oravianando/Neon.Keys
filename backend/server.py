@@ -79,6 +79,7 @@ class Settings(BaseModel):
     sustain: bool = False
     lookahead: float = 4.0
     convert_mode: str = "single"  # 'single' | 'multi'
+    chord_tutorial: bool = True
 
 
 # ---------- Demo song data ----------

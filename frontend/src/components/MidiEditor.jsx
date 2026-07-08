@@ -1,10 +1,12 @@
-import React, { useEffect } from "react";
-import { X, Plus, Minus, Trash2, Save, ArrowUp, ArrowDown } from "lucide-react";
+import React, { useEffect, useRef } from "react";
+import { X, Plus, Minus, Trash2, Save, ArrowUp, ArrowDown, GripHorizontal } from "lucide-react";
 import { midiToNoteName } from "@/lib/piano";
 
 /*
   MidiEditorOverlay: renders clickable note divs on top of canvas for visible notes.
   Selecting a note allows shifting its pitch via buttons or keyboard.
+  A resize handle at the top edge of each selected note lets the user drag to
+  change duration (drag UP = longer note, drag DOWN = shorter note).
 */
 export function MidiEditorOverlay({
   song,
@@ -13,35 +15,106 @@ export function MidiEditorOverlay({
   keyRects,
   selectedIdx,
   onSelectIdx,
+  onResize,
 }) {
+  const containerRef = useRef(null);
+  const dragRef = useRef(null); // { idx, startY, startDuration, containerH }
+
+  useEffect(() => {
+    if (!onResize) return;
+    const onMove = (e) => {
+      const d = dragRef.current;
+      if (!d) return;
+      const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+      const deltaY = d.startY - clientY; // up = positive
+      // The container maps `lookahead` seconds to containerH pixels.
+      // Dragging UP by deltaY pixels adds deltaY / containerH * lookahead seconds.
+      const deltaSec = (deltaY / d.containerH) * lookahead;
+      onResize(d.idx, d.startDuration + deltaSec);
+    };
+    const onUp = () => { dragRef.current = null; };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    window.addEventListener("touchmove", onMove, { passive: false });
+    window.addEventListener("touchend", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+      window.removeEventListener("touchmove", onMove);
+      window.removeEventListener("touchend", onUp);
+    };
+  }, [onResize, lookahead]);
+
+  const startResize = (e, idx, note) => {
+    e.stopPropagation();
+    e.preventDefault();
+    const container = containerRef.current;
+    if (!container) return;
+    const containerH = container.getBoundingClientRect().height;
+    const clientY = e.touches ? e.touches[0].clientY : e.clientY;
+    dragRef.current = {
+      idx,
+      startY: clientY,
+      startDuration: note.duration,
+      containerH,
+    };
+    onSelectIdx(idx);
+  };
+
   if (!song) return null;
   return (
-    <div className="absolute inset-0 z-20 pointer-events-none" data-testid="midi-editor-overlay">
+    <div
+      ref={containerRef}
+      className="absolute inset-0 z-20 pointer-events-none"
+      data-testid="midi-editor-overlay"
+    >
       {song.notes.map((n, idx) => {
         const relStart = n.time - currentTime;
         const relEnd = n.time + n.duration - currentTime;
         if (relEnd < 0 || relStart > lookahead) return null;
         const rect = keyRects[n.midi];
         if (!rect) return null;
-        // percentages of container
+        const selected = selectedIdx === idx;
+        const noteW = Math.max(3, rect.width - 2);
         return (
-          <button
+          <div
             key={`${idx}-${n.midi}-${n.time}`}
-            data-testid={`edit-note-${idx}`}
-            onClick={() => onSelectIdx(idx)}
-            className={`absolute pointer-events-auto rounded border-2 transition-all ${
-              selectedIdx === idx
-                ? "border-yellow-300 bg-yellow-300/40 shadow-[0_0_16px_rgba(253,224,71,0.9)]"
-                : "border-white/30 bg-white/5 hover:border-white/60 hover:bg-white/20"
-            }`}
+            className="absolute"
             style={{
               left: rect.left + 1,
-              width: Math.max(3, rect.width - 2),
+              width: noteW,
               top: `calc(${100 - (relEnd / lookahead) * 100}% )`,
               height: `${((relEnd - relStart) / lookahead) * 100}%`,
-              minHeight: 8,
+              minHeight: 12,
             }}
-          />
+          >
+            <button
+              data-testid={`edit-note-${idx}`}
+              onClick={() => onSelectIdx(idx)}
+              className={`absolute inset-0 pointer-events-auto rounded border-2 transition-all ${
+                selected
+                  ? "border-yellow-300 bg-yellow-300/40 shadow-[0_0_16px_rgba(253,224,71,0.9)]"
+                  : "border-white/30 bg-white/5 hover:border-white/60 hover:bg-white/20"
+              }`}
+            />
+            {/* Resize handle at the top edge (only when selected + noteW > 12px) */}
+            {selected && onResize && noteW >= 12 && (
+              <div
+                onMouseDown={(e) => startResize(e, idx, n)}
+                onTouchStart={(e) => startResize(e, idx, n)}
+                className="absolute -top-1 left-0 right-0 h-3 flex items-center justify-center cursor-ns-resize pointer-events-auto z-10 group"
+                data-testid={`resize-handle-${idx}`}
+                title="Drag to resize duration"
+                aria-label="Resize note duration"
+              >
+                <div className="w-full h-1 bg-yellow-300 rounded-full shadow-[0_0_8px_rgba(253,224,71,1)] group-hover:h-2 transition-all" />
+                <GripHorizontal
+                  size={12}
+                  className="absolute text-black bg-yellow-300 rounded-full p-0.5"
+                />
+              </div>
+            )}
+          </div>
         );
       })}
     </div>
