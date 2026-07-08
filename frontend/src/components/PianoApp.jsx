@@ -559,11 +559,30 @@ export default function PianoApp() {
 
   const saveEdits = useCallback(async () => {
     if (!currentSong) return;
+    // If the current song is a demo (not in userSongs), save as a NEW user song
+    const isUserSong = userSongs.some((s) => s.id === currentSong.id);
     setSavingEdit(true);
     try {
-      await axios.put(`${API}/songs/${currentSong.id}`, { notes: currentSong.notes });
-      setUserSongs((prev) => prev.map((s) => (s.id === currentSong.id ? { ...s, notes: currentSong.notes } : s)));
-      toast.success("Edits saved");
+      if (isUserSong) {
+        await axios.put(`${API}/songs/${currentSong.id}`, { notes: currentSong.notes });
+        setUserSongs((prev) => prev.map((s) => (s.id === currentSong.id ? { ...s, notes: currentSong.notes } : s)));
+        toast.success("Edits saved");
+      } else {
+        // Demo song — persist as a new user copy so the edits don't get lost.
+        const savedRes = await axios.post(`${API}/songs`, {
+          name: `${currentSong.name} (edited)`,
+          duration: currentSong.duration,
+          notes: currentSong.notes,
+          chords: currentSong.chords || [],
+          tracks: currentSong.tracks || [],
+          source: "edit",
+          difficulty: settings.difficulty,
+        });
+        const saved = savedRes.data;
+        setUserSongs((prev) => [saved, ...prev]);
+        setCurrentSong(saved);
+        toast.success("Saved as new song");
+      }
       setEditSnapshot(null);
       setEditMode(false);
       setSelectedNoteIdx(null);
@@ -573,7 +592,7 @@ export default function PianoApp() {
     } finally {
       setSavingEdit(false);
     }
-  }, [currentSong]);
+  }, [currentSong, userSongs, settings.difficulty]);
 
   const isDirty = editSnapshot
     ? JSON.stringify(currentSong?.notes) !== JSON.stringify(editSnapshot)
