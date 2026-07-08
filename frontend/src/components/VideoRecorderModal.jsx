@@ -15,7 +15,6 @@ import {
   keyXFractionCanvas,
   keyWidthFractionCanvas,
 } from "@/lib/vfx";
-
 const CANVAS_W = 1280;
 const CANVAS_H = 720;
 const PIANO_H = 160;
@@ -91,7 +90,7 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler }
         // fallback: cycle a chord
         [60, 64, 67, 72].forEach((m) => (previewT % 2 < 1 ? previewActive.add(m) : null));
       }
-      renderFrame(ctx, chosen, previewT, previewT % (song?.duration || 4), song, previewActive);
+      renderFrame(ctx, chosen, previewT, previewT % (song?.duration || 4), song, previewActive, []);
       if (state !== "recording") rafRef.current = requestAnimationFrame(previewLoop);
     };
     rafRef.current = requestAnimationFrame(previewLoop);
@@ -164,7 +163,8 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler }
         return true;
       });
 
-      renderFrame(ctx, chosen, elapsed, elapsed, song, activeKeysRef.current);
+      updateParticles(particlesRef.current);
+      renderFrame(ctx, chosen, elapsed, elapsed, song, activeKeysRef.current, particlesRef.current);
 
       if (elapsed >= duration) {
         stopRecording();
@@ -307,16 +307,24 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler }
 }
 
 // ------------------- Frame renderer -------------------
-function renderFrame(ctx, preset, timeAbs, currentTime, song, activeKeys) {
+function renderFrame(ctx, preset, timeAbs, currentTime, song, activeKeys, particles) {
   const w = CANVAS_W, h = CANVAS_H;
-  // Beat shake
-  let shakeX = 0, shakeY = 0;
-  if (preset.beatShake > 0 && activeKeys.size > 0) {
+  // Beat shake + zoom on beat
+  let shakeX = 0, shakeY = 0, zoom = 1;
+  const beatActive = activeKeys.size > 0;
+  if (preset.beatShake > 0 && beatActive) {
     shakeX = (Math.random() - 0.5) * preset.beatShake * 20;
     shakeY = (Math.random() - 0.5) * preset.beatShake * 20;
   }
+  if ((preset.zoomOnBeat || 0) > 0 && beatActive) {
+    zoom = 1 + preset.zoomOnBeat * 0.06 * (Math.sin(timeAbs * 22) * 0.5 + 0.5);
+  }
+
   ctx.save();
-  ctx.translate(shakeX, shakeY);
+  // Apply zoom + shake around center
+  ctx.translate(w / 2 + shakeX, h / 2 + shakeY);
+  ctx.scale(zoom, zoom);
+  ctx.translate(-w / 2, -h / 2);
 
   // Background
   drawBackground(ctx, w, h, preset.bg, timeAbs, preset.palette);
@@ -351,24 +359,30 @@ function renderFrame(ctx, preset, timeAbs, currentTime, song, activeKeys) {
   ctx.shadowBlur = 0;
   ctx.restore();
 
-  // Particles (updated + drawn)
-  ctx.restore(); // undo shake
-  ctx.save();
-  ctx.translate(shakeX, shakeY);
+  // Particles above piano
+  drawParticles(ctx, particles, preset.trails);
+
   // Piano keys
   drawPiano(ctx, 0, NOTES_H, w, PIANO_H, activeKeys, preset.palette, preset.keyFx);
-  ctx.restore();
 
-  ctx.save();
-  ctx.translate(shakeX, shakeY);
-  // Chromatic aberration overlay (light)
-  if (preset.chromatic) {
+  ctx.restore(); // undo zoom+shake
+
+  // Chromatic aberration overlay AFTER main render
+  const cd = preset.chromaDepth || 0;
+  if (preset.chromatic || cd > 0) {
+    const off = Math.max(2, 12 * (cd || 0.4));
+    ctx.save();
     ctx.globalCompositeOperation = "screen";
-    ctx.globalAlpha = 0.15;
-    ctx.drawImage(ctx.canvas, 3, 0);
-    ctx.drawImage(ctx.canvas, -3, 0);
+    ctx.globalAlpha = 0.15 + 0.35 * cd;
+    // Cyan shift left
+    ctx.filter = "hue-rotate(180deg)";
+    ctx.drawImage(ctx.canvas, -off, 0);
+    // Red shift right
+    ctx.filter = "hue-rotate(0deg)";
+    ctx.drawImage(ctx.canvas, off, 0);
+    ctx.filter = "none";
     ctx.globalCompositeOperation = "source-over";
     ctx.globalAlpha = 1;
+    ctx.restore();
   }
-  ctx.restore();
 }

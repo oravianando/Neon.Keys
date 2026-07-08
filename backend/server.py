@@ -42,6 +42,7 @@ class Song(BaseModel):
     duration: float
     notes: List[Note]
     chords: List[dict] = Field(default_factory=list)
+    tracks: List[dict] = Field(default_factory=list)
     source: str = "upload"  # 'upload' | 'demo'
     difficulty: Optional[str] = None
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
@@ -52,6 +53,7 @@ class SongCreate(BaseModel):
     duration: float
     notes: List[Note]
     chords: List[dict] = Field(default_factory=list)
+    tracks: List[dict] = Field(default_factory=list)
     source: str = "upload"
     difficulty: Optional[str] = None
 

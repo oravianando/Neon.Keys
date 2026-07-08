@@ -13,6 +13,7 @@ import ChordStrip from "@/components/ChordStrip";
 import ToolBar from "@/components/ToolBar";
 import { MidiEditorOverlay, EditToolbar } from "@/components/MidiEditor";
 import VideoRecorderModal from "@/components/VideoRecorderModal";
+import MultiInstrumentStack from "@/components/MultiInstrumentStack";
 import { toast } from "sonner";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -218,10 +219,15 @@ export default function PianoApp() {
           duration: parsed.duration,
           notes: parsed.notes,
           chords: parsed.chords || [],
+          tracks: parsed.tracks || [],
           source: "upload",
           difficulty: parsed.difficulty || settings.difficulty,
         });
         const saved = res.data;
+        // Preserve tracks locally (backend may return without tracks if none provided)
+        if (parsed.tracks && parsed.tracks.length > 0 && (!saved.tracks || saved.tracks.length === 0)) {
+          saved.tracks = parsed.tracks;
+        }
         setUserSongs((prev) => [saved, ...prev]);
         if (isAudio) {
           const blobUrl = URL.createObjectURL(file);
@@ -570,6 +576,10 @@ export default function PianoApp() {
               />
             </div>
           </div>
+          <MultiInstrumentStack
+            tracks={currentSong?.tracks}
+            currentTime={engine.currentTime}
+          />
         </section>
       </main>
 

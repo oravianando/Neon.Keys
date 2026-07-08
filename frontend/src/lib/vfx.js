@@ -1,25 +1,26 @@
 // 20 VFX presets combining background, note, particle, and key effects.
+// Extended properties: trails, chromaDepth (0..1), zoomOnBeat (0..1)
 export const VFX_PRESETS = [
-  { id: "neon-cyan",     label: "Neon Cyan",       bg: "grid",      note: "glow",     particle: "burst",   keyFx: "glow",   chromatic: false, beatShake: 0.0,  palette: ["#00F0FF", "#FF003C"] },
-  { id: "neon-pink",     label: "Neon Pink",       bg: "grid",      note: "glow",     particle: "burst",   keyFx: "glow",   chromatic: false, beatShake: 0.0,  palette: ["#FF00E6", "#00F0FF"] },
-  { id: "aurora",        label: "Aurora Waves",    bg: "aurora",    note: "gradient", particle: "ring",    keyFx: "pulse",  chromatic: false, beatShake: 0.1,  palette: ["#7CFF9A", "#00F0FF"] },
-  { id: "vaporwave",     label: "Vaporwave",       bg: "vapor",     note: "gradient", particle: "sparks",  keyFx: "pulse",  chromatic: true,  beatShake: 0.15, palette: ["#FF71CE", "#01CDFE"] },
-  { id: "matrix",        label: "Matrix Rain",     bg: "matrix",    note: "solid",    particle: "sparks",  keyFx: "glow",   chromatic: false, beatShake: 0.0,  palette: ["#00FF41", "#88FF88"] },
-  { id: "starfield",     label: "Starfield",       bg: "starfield", note: "glow",     particle: "burst",   keyFx: "pulse",  chromatic: false, beatShake: 0.1,  palette: ["#FFFFFF", "#FFD700"] },
-  { id: "sunset",        label: "Sunset",          bg: "sunset",    note: "gradient", particle: "burst",   keyFx: "glow",   chromatic: false, beatShake: 0.1,  palette: ["#FF6B6B", "#FFD93D"] },
-  { id: "cyberpunk",     label: "Cyberpunk",       bg: "grid",      note: "solid",    particle: "burst",   keyFx: "glow",   chromatic: true,  beatShake: 0.3,  palette: ["#FF0080", "#00FFFF"] },
-  { id: "fire",          label: "Fire",            bg: "sunset",    note: "glow",     particle: "sparks",  keyFx: "glow",   chromatic: false, beatShake: 0.25, palette: ["#FF3D00", "#FFC107"] },
-  { id: "ice",           label: "Ice Crystal",     bg: "aurora",    note: "gradient", particle: "ring",    keyFx: "glow",   chromatic: false, beatShake: 0.0,  palette: ["#B3E5FC", "#FFFFFF"] },
-  { id: "galaxy",        label: "Galaxy",          bg: "starfield", note: "glow",     particle: "burst",   keyFx: "pulse",  chromatic: false, beatShake: 0.1,  palette: ["#A020F0", "#FF69B4"] },
-  { id: "confetti",      label: "Confetti Party",  bg: "plain",     note: "solid",    particle: "burst",   keyFx: "pulse",  chromatic: false, beatShake: 0.4,  palette: ["#FF0080", "#00FFFF"] },
-  { id: "laser",         label: "Laser Show",      bg: "plain",     note: "solid",    particle: "sparks",  keyFx: "glow",   chromatic: false, beatShake: 0.2,  palette: ["#FF0000", "#00FF88"] },
-  { id: "monochrome",    label: "Monochrome",      bg: "plain",     note: "solid",    particle: "burst",   keyFx: "glow",   chromatic: false, beatShake: 0.0,  palette: ["#FFFFFF", "#AAAAAA"] },
-  { id: "gold",          label: "Gold Rush",       bg: "plain",     note: "glow",     particle: "sparks",  keyFx: "glow",   chromatic: false, beatShake: 0.05, palette: ["#FFD700", "#FFA500"] },
-  { id: "hologram",      label: "Hologram",        bg: "grid",      note: "gradient", particle: "ring",    keyFx: "pulse",  chromatic: true,  beatShake: 0.05, palette: ["#00FFFF", "#FF00FF"] },
-  { id: "underwater",    label: "Underwater",      bg: "aurora",    note: "gradient", particle: "burst",   keyFx: "pulse",  chromatic: false, beatShake: 0.0,  palette: ["#0077BE", "#7EE8FA"] },
-  { id: "storm",         label: "Lightning Storm", bg: "storm",     note: "solid",    particle: "sparks",  keyFx: "glow",   chromatic: false, beatShake: 0.6,  palette: ["#FFEB3B", "#FFFFFF"] },
-  { id: "rainbow-flow",  label: "Rainbow Flow",    bg: "grid",      note: "rainbow",  particle: "burst",   keyFx: "pulse",  chromatic: false, beatShake: 0.1,  palette: ["rainbow"] },
-  { id: "retro-arcade",  label: "Retro Arcade",    bg: "vapor",     note: "solid",    particle: "burst",   keyFx: "glow",   chromatic: false, beatShake: 0.15, palette: ["#FF0000", "#00FF00"] },
+  { id: "neon-cyan",     label: "Neon Cyan",       bg: "grid",      note: "glow",     particle: "burst",   keyFx: "glow",   chromatic: false, beatShake: 0.0,  palette: ["#00F0FF", "#FF003C"], trails: false, chromaDepth: 0.0, zoomOnBeat: 0.0 },
+  { id: "neon-pink",     label: "Neon Pink",       bg: "grid",      note: "glow",     particle: "burst",   keyFx: "glow",   chromatic: false, beatShake: 0.0,  palette: ["#FF00E6", "#00F0FF"], trails: true,  chromaDepth: 0.0, zoomOnBeat: 0.15 },
+  { id: "aurora",        label: "Aurora Waves",    bg: "aurora",    note: "gradient", particle: "ring",    keyFx: "pulse",  chromatic: false, beatShake: 0.1,  palette: ["#7CFF9A", "#00F0FF"], trails: true,  chromaDepth: 0.0, zoomOnBeat: 0.1  },
+  { id: "vaporwave",     label: "Vaporwave",       bg: "vapor",     note: "gradient", particle: "sparks",  keyFx: "pulse",  chromatic: true,  beatShake: 0.15, palette: ["#FF71CE", "#01CDFE"], trails: false, chromaDepth: 0.6, zoomOnBeat: 0.2  },
+  { id: "matrix",        label: "Matrix Rain",     bg: "matrix",    note: "solid",    particle: "sparks",  keyFx: "glow",   chromatic: false, beatShake: 0.0,  palette: ["#00FF41", "#88FF88"], trails: true,  chromaDepth: 0.0, zoomOnBeat: 0.0  },
+  { id: "starfield",     label: "Starfield",       bg: "starfield", note: "glow",     particle: "burst",   keyFx: "pulse",  chromatic: false, beatShake: 0.1,  palette: ["#FFFFFF", "#FFD700"], trails: true,  chromaDepth: 0.0, zoomOnBeat: 0.2  },
+  { id: "sunset",        label: "Sunset",          bg: "sunset",    note: "gradient", particle: "burst",   keyFx: "glow",   chromatic: false, beatShake: 0.1,  palette: ["#FF6B6B", "#FFD93D"], trails: false, chromaDepth: 0.0, zoomOnBeat: 0.0  },
+  { id: "cyberpunk",     label: "Cyberpunk",       bg: "grid",      note: "solid",    particle: "burst",   keyFx: "glow",   chromatic: true,  beatShake: 0.3,  palette: ["#FF0080", "#00FFFF"], trails: false, chromaDepth: 0.9, zoomOnBeat: 0.35 },
+  { id: "fire",          label: "Fire",            bg: "sunset",    note: "glow",     particle: "sparks",  keyFx: "glow",   chromatic: false, beatShake: 0.25, palette: ["#FF3D00", "#FFC107"], trails: true,  chromaDepth: 0.0, zoomOnBeat: 0.15 },
+  { id: "ice",           label: "Ice Crystal",     bg: "aurora",    note: "gradient", particle: "ring",    keyFx: "glow",   chromatic: false, beatShake: 0.0,  palette: ["#B3E5FC", "#FFFFFF"], trails: true,  chromaDepth: 0.3, zoomOnBeat: 0.0  },
+  { id: "galaxy",        label: "Galaxy",          bg: "starfield", note: "glow",     particle: "burst",   keyFx: "pulse",  chromatic: false, beatShake: 0.1,  palette: ["#A020F0", "#FF69B4"], trails: true,  chromaDepth: 0.4, zoomOnBeat: 0.25 },
+  { id: "confetti",      label: "Confetti Party",  bg: "plain",     note: "solid",    particle: "burst",   keyFx: "pulse",  chromatic: false, beatShake: 0.4,  palette: ["#FF0080", "#00FFFF"], trails: false, chromaDepth: 0.0, zoomOnBeat: 0.5  },
+  { id: "laser",         label: "Laser Show",      bg: "plain",     note: "solid",    particle: "sparks",  keyFx: "glow",   chromatic: false, beatShake: 0.2,  palette: ["#FF0000", "#00FF88"], trails: true,  chromaDepth: 0.5, zoomOnBeat: 0.3  },
+  { id: "monochrome",    label: "Monochrome",      bg: "plain",     note: "solid",    particle: "burst",   keyFx: "glow",   chromatic: false, beatShake: 0.0,  palette: ["#FFFFFF", "#AAAAAA"], trails: false, chromaDepth: 0.0, zoomOnBeat: 0.0  },
+  { id: "gold",          label: "Gold Rush",       bg: "plain",     note: "glow",     particle: "sparks",  keyFx: "glow",   chromatic: false, beatShake: 0.05, palette: ["#FFD700", "#FFA500"], trails: true,  chromaDepth: 0.0, zoomOnBeat: 0.1  },
+  { id: "hologram",      label: "Hologram",        bg: "grid",      note: "gradient", particle: "ring",    keyFx: "pulse",  chromatic: true,  beatShake: 0.05, palette: ["#00FFFF", "#FF00FF"], trails: false, chromaDepth: 0.85,zoomOnBeat: 0.15 },
+  { id: "underwater",    label: "Underwater",      bg: "aurora",    note: "gradient", particle: "burst",   keyFx: "pulse",  chromatic: false, beatShake: 0.0,  palette: ["#0077BE", "#7EE8FA"], trails: true,  chromaDepth: 0.2, zoomOnBeat: 0.05 },
+  { id: "storm",         label: "Lightning Storm", bg: "storm",     note: "solid",    particle: "sparks",  keyFx: "glow",   chromatic: false, beatShake: 0.6,  palette: ["#FFEB3B", "#FFFFFF"], trails: false, chromaDepth: 0.0, zoomOnBeat: 0.6  },
+  { id: "rainbow-flow",  label: "Rainbow Flow",    bg: "grid",      note: "rainbow",  particle: "burst",   keyFx: "pulse",  chromatic: false, beatShake: 0.1,  palette: ["rainbow"],            trails: true,  chromaDepth: 0.0, zoomOnBeat: 0.2  },
+  { id: "retro-arcade",  label: "Retro Arcade",    bg: "vapor",     note: "solid",    particle: "burst",   keyFx: "glow",   chromatic: false, beatShake: 0.15, palette: ["#FF0000", "#00FF00"], trails: false, chromaDepth: 0.4, zoomOnBeat: 0.25 },
 ];
 
 // ============ Background renderers ============
@@ -278,6 +279,8 @@ export function spawnParticles(store, x, y, style, color) {
     store.push({
       x,
       y,
+      px: x,
+      py: y,
       vx: Math.cos(a) * speed + (Math.random() - 0.5) * 0.4,
       vy: style === "ring" ? Math.sin(a) * speed : -(2 + Math.random() * 3),
       life: 1,
@@ -289,6 +292,8 @@ export function spawnParticles(store, x, y, style, color) {
 export function updateParticles(store, dt = 1 / 60) {
   for (let i = store.length - 1; i >= 0; i--) {
     const p = store[i];
+    p.px = p.x;
+    p.py = p.y;
     p.x += p.vx;
     p.y += p.vy;
     p.vy += 0.15;
@@ -296,13 +301,22 @@ export function updateParticles(store, dt = 1 / 60) {
     if (p.life <= 0) store.splice(i, 1);
   }
 }
-export function drawParticles(ctx, store) {
+export function drawParticles(ctx, store, withTrails = false) {
   ctx.save();
   for (const p of store) {
     ctx.globalAlpha = Math.max(0, p.life);
     ctx.fillStyle = p.color;
     ctx.shadowColor = p.color;
     ctx.shadowBlur = 12;
+    if (withTrails && p.px !== undefined) {
+      ctx.strokeStyle = p.color;
+      ctx.lineWidth = Math.max(1, p.size * 0.6);
+      ctx.lineCap = "round";
+      ctx.beginPath();
+      ctx.moveTo(p.px, p.py);
+      ctx.lineTo(p.x, p.y);
+      ctx.stroke();
+    }
     ctx.beginPath();
     ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
     ctx.fill();

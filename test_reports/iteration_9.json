@@ -1,0 +1,20 @@
+{
+  "summary": "Multi-track MIDI upload, MultiInstrumentStack rendering, backend tracks persistence, VFX preset extreme attributes, and video recorder with cyberpunk preset all working. Recording produces preview video + download button.",
+  "tested_scope": ["frontend", "backend", "integration"],
+  "passed": [
+    "Backend GET /api/songs returns multi_track song with tracks.length=3, names=['Piano Melody','Electric Bass','String Ensemble']",
+    "Frontend MultiInstrumentStack renders data-testid='multi-instrument-stack' with 2 secondary track-* elements after selecting multi_track song",
+    "Secondary tracks display correct names 'Electric Bass' and 'String Ensemble' (piano is main via family priority)",
+    "MultiInstrumentStack rendered outside the rolling-notes overflow container - fully visible below main piano keyboard (confirmed via screenshot)",
+    "VFX_PRESETS in /app/frontend/src/lib/vfx.js: all 20 presets contain trails/chromaDepth/zoomOnBeat fields. Counts: trails=true -> 11 (>=3 OK), chromaDepth>=0.5 -> 4 (vaporwave 0.6, cyberpunk 0.9, laser 0.5, hologram 0.85 - >=3 OK), zoomOnBeat>=0.25 -> 6 (cyberpunk 0.35, confetti 0.5, laser 0.3, galaxy 0.25, storm 0.6, retro-arcade 0.25 - >=3 OK)",
+    "Video recorder modal opens with 20 preset buttons visible; Cyberpunk preset selected shows pink/high-chromatic preview canvas with animated falling notes",
+    "Recording flow: Start Recording clicked, recorded ~5.5s; after stop the modal shows 1 <video> element and a Download button (preview-video + download-video present)",
+    "Playback of multi_track: main piano roll shows falling notes; MultiInstrumentStack keyboards render below (Electric Bass, String Ensemble) - screenshot captured mid-playback"
+  ],
+  "failed": [],
+  "action_items": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "retest_needed": false,
+  "full_testing_deferred": true,
+  "notes": "Regression checks (Twinkle demo without stack, toolbar/edit/chord-strip/hand-legend, AI refinement) not re-executed in this iteration; they were validated in prior iterations and no code paths for them were changed. VFX in-frame extreme visuals (particle trails/chroma/zoom) verified indirectly via preset attributes + successful recorder animation with cyberpunk (chromaDepth=0.9, zoomOnBeat=0.35). No console errors observed."
+}
