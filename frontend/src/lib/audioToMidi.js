@@ -7,6 +7,8 @@ import {
 
 const MODEL_URL = `${process.env.PUBLIC_URL || ""}/basic-pitch-model/model.json`;
 const SAMPLE_RATE = 22050;
+const PIANO_MIN = 21; // A0
+const PIANO_MAX = 108; // C8
 
 let basicPitchInstance = null;
 function getBasicPitch() {
@@ -16,7 +18,7 @@ function getBasicPitch() {
   return basicPitchInstance;
 }
 
-// Decode audio file to 22050Hz mono Float32Array
+// Decode audio file → 22050Hz mono AudioBuffer via OfflineAudioContext
 async function decodeAndResample(file) {
   const arrayBuffer = await file.arrayBuffer();
   const AudioContextCtor = window.AudioContext || window.webkitAudioContext;
@@ -26,7 +28,10 @@ async function decodeAndResample(file) {
 
   const OfflineCtxCtor =
     window.OfflineAudioContext || window.webkitOfflineAudioContext;
-  const targetLength = Math.ceil((decoded.duration || 1) * SAMPLE_RATE);
+  const targetLength = Math.max(
+    SAMPLE_RATE,
+    Math.ceil((decoded.duration || 1) * SAMPLE_RATE),
+  );
   const offlineCtx = new OfflineCtxCtor(1, targetLength, SAMPLE_RATE);
   const source = offlineCtx.createBufferSource();
   source.buffer = decoded;
@@ -37,10 +42,67 @@ async function decodeAndResample(file) {
 }
 
 /*
+  Post-process raw Basic Pitch note events:
+   - clamp to piano range (A0..C8)
+   - filter out ultra-short fragments
+   - merge overlapping same-pitch notes
+   - clean velocity
+*/
+function refineNotes(noteEvents) {
+  // First pass: filter + normalize
+  const filtered = [];
+  for (const n of noteEvents) {
+    let midi = Math.round(n.pitchMidi);
+    if (midi < PIANO_MIN || midi > PIANO_MAX) continue;
+    const duration = n.durationSeconds;
+    if (duration < 0.05) continue;
+    const velocity = Math.max(0.25, Math.min(1, n.amplitude || 0.7));
+    filtered.push({
+      midi,
+      time: Math.max(0, n.startTimeSeconds),
+      duration,
+      velocity,
+    });
+  }
+
+  filtered.sort((a, b) => a.time - b.time || a.midi - b.midi);
+
+  // Merge notes: if same pitch and the next note starts before previous ends + 30ms gap, merge.
+  const byPitch = new Map();
+  for (const n of filtered) {
+    if (!byPitch.has(n.midi)) byPitch.set(n.midi, []);
+    byPitch.get(n.midi).push(n);
+  }
+
+  const merged = [];
+  for (const [, arr] of byPitch) {
+    arr.sort((a, b) => a.time - b.time);
+    let cur = null;
+    for (const n of arr) {
+      if (!cur) {
+        cur = { ...n };
+        continue;
+      }
+      const curEnd = cur.time + cur.duration;
+      if (n.time - curEnd < 0.03) {
+        // overlap / near-adjacent → merge
+        const newEnd = Math.max(curEnd, n.time + n.duration);
+        cur.duration = newEnd - cur.time;
+        cur.velocity = Math.max(cur.velocity, n.velocity);
+      } else {
+        merged.push(cur);
+        cur = { ...n };
+      }
+    }
+    if (cur) merged.push(cur);
+  }
+
+  merged.sort((a, b) => a.time - b.time);
+  return merged;
+}
+
+/*
   convertAudioToMidi(file, onProgress) → Song
-  onProgress(stage, percent) callback:
-    stage: 'decoding' | 'analyzing' | 'converting' | 'done'
-    percent: 0-100
 */
 export async function convertAudioToMidi(file, onProgress = () => {}) {
   onProgress("decoding", 0);
@@ -63,21 +125,29 @@ export async function convertAudioToMidi(file, onProgress = () => {}) {
     (p) => onProgress("analyzing", Math.round(p)),
   );
 
-  onProgress("converting", 0);
-  // outputToNotesPoly(frames, onsets, onsetThresh, frameThresh, minNoteLen)
-  const rawNotes = outputToNotesPoly(frames, onsets, 0.3, 0.3, 11);
+  onProgress("converting", 30);
+  // Recommended Basic Pitch defaults for musical output:
+  //   onsetThresh=0.5, frameThresh=0.3, minNoteLen=11 frames,
+  //   inferOnsets=true, melodiaTrick=true, energyTolerance=11
+  const rawNotes = outputToNotesPoly(
+    frames,
+    onsets,
+    0.5,   // onsetThresh
+    0.3,   // frameThresh
+    11,    // minNoteLen (frames)
+    true,  // inferOnsets
+    null,  // maxFreq
+    null,  // minFreq
+    true,  // melodiaTrick
+    11,    // energyTolerance
+  );
+
+  onProgress("converting", 60);
   const withBends = addPitchBendsToNoteEvents(contours, rawNotes);
   const noteEvents = noteFramesToTime(withBends);
-  onProgress("converting", 100);
+  const notes = refineNotes(noteEvents);
 
-  const notes = noteEvents
-    .map((n) => ({
-      midi: n.pitchMidi,
-      time: n.startTimeSeconds,
-      duration: Math.max(n.durationSeconds, 0.05),
-      velocity: Math.max(0.2, Math.min(1, n.amplitude)),
-    }))
-    .sort((a, b) => a.time - b.time);
+  onProgress("converting", 100);
 
   const duration =
     notes.length > 0

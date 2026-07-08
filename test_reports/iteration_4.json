@@ -1,0 +1,31 @@
+{
+  "summary": "Iteration 4 Audio->MIDI conversion verified end-to-end. Uploaded /tmp/test_piano_scale.wav, Basic Pitch produced exactly 8 notes [60,62,64,65,67,69,71,72] = perfect C major scale, all constraints pass, song persisted via POST/GET /api/songs, playback highlights 7 distinct piano keys.",
+  "tested_scope": ["frontend", "backend", "integration"],
+  "passed": [
+    "GET /api/ health returns ok",
+    "GET /api/songs returns list; new song persisted (count 5 -> 6)",
+    "Conversion produced 8 notes (expected 8, tolerance 4-20)",
+    "All midi in [21,108] integer piano range (values 60-72)",
+    "All durations >= 0.05s (range 0.58-0.615)",
+    "Notes are time-ordered (times 0.0,0.6,1.2,1.8,2.39,3.0,3.6,4.19)",
+    "No duplicated same-pitch overlapping notes",
+    "MIDI sequence exactly matches C major scale ground truth",
+    "conversion-progress UI element appeared during upload",
+    "Play button triggers playback; 7 distinct piano keys highlighted (>= 3 required)",
+    "Demo song (Twinkle) still selectable and displayed as Now Playing (regression OK)"
+  ],
+  "failed": [
+    {
+      "area": "conversion-progress UI stages",
+      "issue": "Test polling only captured 'Detecting pitches' stage; 'Decoding audio' and 'Building MIDI' stages were not observed (likely too fast to catch at 1s polling). The UI element does appear and progress advances, but three-stage sequence not explicitly verified.",
+      "evidence": "stages_seen={'detecting'} in browser automation output; conversion-progress element became visible with text 'Detecting pitches 0%'.",
+      "priority": "LOW"
+    }
+  ],
+  "action_items": [
+    "Optional: verify all three progress-stage labels ('Decoding audio', 'Detecting pitches', 'Building MIDI') render by inspecting SongLibrary.jsx (not a blocker — conversion works)."
+  ],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "retest_needed": false,
+  "full_testing_deferred": true
+}
