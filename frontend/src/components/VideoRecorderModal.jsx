@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 import axios from "axios";
 import * as Tone from "tone";
 import { Video, X, Download, Play, Square, Sparkles, Wand2 } from "lucide-react";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { createVideoRecorder } from "@/lib/videoRecorder";
@@ -295,6 +295,9 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
           <DialogTitle className="font-heading text-2xl neon-cyan flex items-center gap-2">
             <Video size={20} /> Create Piano Video
           </DialogTitle>
+          <DialogDescription className="sr-only">
+            Record a video of your piano performance with visual effects, resolution options, and AI-picked presets.
+          </DialogDescription>
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
