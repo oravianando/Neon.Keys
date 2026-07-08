@@ -59,7 +59,9 @@ export default function PianoApp() {
   // Persist settings (debounced)
   useEffect(() => {
     const t = setTimeout(() => {
-      axios.put(`${API}/settings`, { id: "global", ...settings }).catch(() => {});
+      axios.put(`${API}/settings`, { id: "global", ...settings }).catch((err) => {
+        console.warn("Failed to persist settings", err);
+      });
     }, 500);
     return () => clearTimeout(t);
   }, [settings]);
@@ -123,8 +125,8 @@ export default function PianoApp() {
         const saved = res.data;
         setUserSongs((prev) => [saved, ...prev]);
         handleSelectSong(saved);
-      } catch (e) {
-        // fall back to local session
+      } catch (err) {
+        console.warn("Failed to persist song to backend, using local session", err);
         setUserSongs((prev) => [parsed, ...prev]);
         handleSelectSong(parsed);
       }
@@ -135,7 +137,9 @@ export default function PianoApp() {
   const handleDelete = useCallback(async (song) => {
     try {
       await axios.delete(`${API}/songs/${song.id}`);
-    } catch (e) {}
+    } catch (err) {
+      console.warn("Failed to delete song on server", err);
+    }
     setUserSongs((prev) => prev.filter((s) => s.id !== song.id));
     if (currentSong?.id === song.id) {
       setCurrentSong(null);

@@ -1,0 +1,25 @@
+{
+  "summary": "Regression pass after adding error logging to previously-empty catch blocks. All backend endpoints (GET /api/demo-songs, GET /api/songs, GET/PUT /api/settings) return 200 with expected data. Full frontend flow verified: NEON.KEYS header, 5 demo songs, 88-key piano, song selection, play/pause/resume/stop, currentTime resets to 0:00, speed slider updates (1.55x), settings modal (volume slider, sustain switch, color option) all functional, piano-key-C4 click triggers note. Zero console.error and zero app-originated console.warn observed. Only 2 warnings present are benign browser-level Chrome AudioContext autoplay-policy warnings (not from the newly added logging).",
+  "tested_scope": ["frontend", "backend", "integration"],
+  "passed": [
+    "GET /api/demo-songs -> 200, 5 songs including Twinkle Twinkle Little Star",
+    "GET /api/songs -> 200, list response",
+    "GET /api/settings -> 200 with expected fields",
+    "PUT /api/settings -> 200, values persisted",
+    "Home page loads with NEON.KEYS header and piano rendered",
+    "Twinkle Twinkle Little Star selectable from library",
+    "play-button starts playback (notes falling, key highlighted)",
+    "pause-button pauses, play-button resumes",
+    "stop-button resets currentTime to 0:00",
+    "speed-slider drag updates speed-value display",
+    "settings-button opens settings; volume-slider, sustain-switch, color-option all interact",
+    "piano-key-C4 click triggers note without console error",
+    "0 console errors during full flow; new console.warn catch-block additions did NOT fire under normal operation"
+  ],
+  "failed": [],
+  "action_items": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "retest_needed": false,
+  "full_testing_deferred": true,
+  "notes": "The 2 observed console warnings are Chrome AudioContext autoplay-policy notices originating from the browser itself (pre-existing behavior, not from the new console.warn statements in usePianoEngine.js/PianoApp.jsx). No regressions detected from the code quality changes."
+}

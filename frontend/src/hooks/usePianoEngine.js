@@ -73,8 +73,8 @@ export function usePianoEngine({ volume = 0.8, sustain = false } = {}) {
       const noteName = Tone.Frequency(midi, "midi").toNote();
       try {
         samplerRef.current.triggerAttackRelease(noteName, duration, undefined, velocity);
-      } catch (e) {
-        // ignore
+      } catch (err) {
+        console.warn("playNote failed", err);
       }
       setActive(midi, true);
       setTimeout(() => setActive(midi, false), Math.min(duration * 1000, 400));
@@ -100,7 +100,9 @@ export function usePianoEngine({ volume = 0.8, sustain = false } = {}) {
       const dur = Math.max(n.duration / speedRef.current, 0.08);
       try {
         samplerRef.current?.triggerAttackRelease(noteName, dur, undefined, n.velocity);
-      } catch (e) {}
+      } catch (err) {
+        console.warn("scheduled note failed", err);
+      }
       setActive(n.midi, true);
       activeReleasesRef.current.push({
         midi: n.midi,
