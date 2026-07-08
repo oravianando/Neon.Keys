@@ -106,7 +106,17 @@ export default function RollingNotes({
 
         const isBlack = isBlackKey(n.midi);
         const palette = colors[noteColor] || colors.cyan;
-        const color = noteColor === "rainbow" ? rainbow(n.midi) : (isBlack ? palette.black : palette.white);
+        let color;
+        if (n.hand === "left") {
+          // Left hand → secondary color (chord/bass accent)
+          color = palette.black;
+        } else if (n.hand === "right") {
+          color = palette.white;
+        } else if (noteColor === "rainbow") {
+          color = rainbow(n.midi);
+        } else {
+          color = isBlack ? palette.black : palette.white;
+        }
 
         // Draw glow
         ctx.shadowColor = color;

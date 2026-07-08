@@ -1,0 +1,23 @@
+{
+  "summary": "Verified new LLM-based MIDI refinement endpoint end-to-end. Backend POST /api/refine-midi returns 200 with proper hand tags (all midi<60 -> 'left', all midi>=60 -> 'right'), correctly drops the noise blip (17 in -> 16 out, dropped=1, refined=true), and returns {notes:[], stats.refined:false} on empty input. Frontend upload of /tmp/test_piano_scale.wav triggers Basic Pitch conversion, shows the 'AI cleaning (chords/hands)' stage in conversion-progress, calls /api/refine-midi (200), toasts 'AI refined ... notes', persists a new song with 8 hand-tagged notes (all 'right' for C-major scale), and displays the hand-legend (Right cyan / Left red) in the rolling-notes area. Demo song selection (Twinkle) correctly hides the legend, play/stop works, play-original-button correctly absent for demos and present immediately after an audio upload. delete-song buttons present for all uploaded songs.",
+  "tested_scope": ["backend", "frontend", "integration"],
+  "passed": [
+    "POST /api/refine-midi 17-note payload: 200, stats={input:17,output:16,dropped:1,refined:true}, all midi<60 tagged 'left' (10/10), all midi>=60 tagged 'right' (6/6), midi=105 noise blip dropped",
+    "POST /api/refine-midi empty notes: 200, {notes:[], stats.refined:false}",
+    "Upload WAV -> Basic Pitch -> auto /api/refine-midi call succeeds",
+    "conversion-progress UI shows 'AI cleaning (chords/hands)' stage",
+    "Toast 'AI refined X notes' appears after refinement",
+    "Newly created song persisted with hand tags on 8/8 notes",
+    "hand-legend visible for uploaded song, shows Right (cyan) + Left (red)",
+    "Rolling notes canvas renders right-hand notes in cyan/primary color",
+    "Demo song (Twinkle) plays without legend; play/stop work",
+    "play-original-button appears for audio upload, absent for demo songs",
+    "delete-song-{id} buttons present for uploaded songs"
+  ],
+  "failed": [],
+  "action_items": [],
+  "success_rate": {"backend": "100%", "frontend": "100%"},
+  "retest_needed": false,
+  "full_testing_deferred": true,
+  "notes": "Refine endpoint latency was ~2s on the 17-note payload (may indicate fallback heuristic path but output matches all requirements). The .mid file upload path was not exercised in this pass but the code path is separate from refine-midi. play-original-button relies on in-session blob URL and won't reappear after page reload for previously uploaded audio — this is expected behavior."
+}

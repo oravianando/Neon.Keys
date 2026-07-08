@@ -153,10 +153,32 @@ export default function PianoApp() {
             }[stage] || stage;
             setConverting({ stage: label, percent });
           });
+          // AI refinement: hand classification + noise removal via Claude Sonnet 4.6
+          if (parsed.notes.length > 0) {
+            setConverting({ stage: "AI cleaning (chords/hands)", percent: 0 });
+            try {
+              const refineRes = await axios.post(
+                `${API}/refine-midi`,
+                { notes: parsed.notes, name: parsed.name },
+                { timeout: 90000 },
+              );
+              parsed.notes = refineRes.data.notes;
+              const stats = refineRes.data.stats || {};
+              if (stats.refined) {
+                toast.success(
+                  `AI refined ${stats.input} → ${stats.output} notes (${stats.dropped || 0} removed)`,
+                );
+              }
+            } catch (err) {
+              console.warn("LLM refinement failed, using unrefined notes", err);
+              toast.warning("AI refinement skipped — using raw MIDI");
+            }
+            setConverting({ stage: "AI cleaning (chords/hands)", percent: 100 });
+          }
           if (parsed.notes.length === 0) {
             toast.warning("No notes detected. Try a clearer melodic recording.");
           } else {
-            toast.success(`Converted ${parsed.notes.length} notes from audio`);
+            toast.success(`Ready — ${parsed.notes.length} notes`);
           }
         } catch (err) {
           console.error("Audio conversion failed", err);
@@ -306,6 +328,18 @@ export default function PianoApp() {
                 noteColor={settings.note_color}
                 keyRects={keyRects}
               />
+              {currentSong && currentSong.notes?.some((n) => n.hand) && (
+                <div className="absolute top-3 right-3 glass rounded-lg px-3 py-2 flex items-center gap-3 text-[10px] uppercase tracking-widest z-10" data-testid="hand-legend">
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-3 h-3 rounded-sm bg-[#00F0FF] shadow-[0_0_10px_rgba(0,240,255,0.7)]" />
+                    <span className="text-white/70">Right</span>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="w-3 h-3 rounded-sm bg-[#FF003C] shadow-[0_0_10px_rgba(255,0,60,0.7)]" />
+                    <span className="text-white/70">Left</span>
+                  </div>
+                </div>
+              )}
               {!currentSong && (
                 <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
                   <div className="text-center px-6">

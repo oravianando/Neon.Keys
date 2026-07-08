@@ -4,6 +4,8 @@ from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 import os
 import logging
+import json
+import re
 from pathlib import Path
 from pydantic import BaseModel, Field
 from typing import List, Optional, Any
@@ -18,6 +20,8 @@ mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
+EMERGENT_LLM_KEY = os.environ.get('EMERGENT_LLM_KEY', '')
+
 app = FastAPI()
 api_router = APIRouter(prefix="/api")
 
@@ -28,6 +32,7 @@ class Note(BaseModel):
     time: float
     duration: float
     velocity: float = 0.8
+    hand: Optional[str] = None  # 'left' | 'right' | None
 
 
 class Song(BaseModel):
@@ -182,6 +187,134 @@ async def update_settings(payload: Settings):
     doc["id"] = "global"
     await db.settings.update_one({"id": "global"}, {"$set": doc}, upsert=True)
     return doc
+
+
+# ---------- LLM-based MIDI refinement ----------
+class RefineRequest(BaseModel):
+    notes: List[Note]
+    name: Optional[str] = None
+
+
+MAX_LLM_NOTES = 500
+
+
+def _extract_json(text: str) -> dict:
+    """Best-effort JSON extraction from LLM response."""
+    # Try direct parse first
+    try:
+        return json.loads(text)
+    except Exception:
+        pass
+    # Try to find first {...} block
+    match = re.search(r"\{.*\}", text, re.DOTALL)
+    if match:
+        try:
+            return json.loads(match.group(0))
+        except Exception:
+            pass
+    return {}
+
+
+async def _classify_hands(notes: List[dict]) -> dict:
+    """Send notes to Claude and get back {right: [i,...], left: [i,...], drop: [i,...]}."""
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+
+    # Build compact serialization: each line "index midi time duration velocity"
+    lines = []
+    for i, n in enumerate(notes):
+        lines.append(
+            f"{i} {n['midi']} {round(n['time'], 3)} {round(n['duration'], 3)} {round(n['velocity'], 2)}"
+        )
+    notes_block = "\n".join(lines)
+
+    system_message = (
+        "You are a piano-music-theory assistant. You will receive a list of detected note events from an audio-to-MIDI extraction. "
+        "Each line is: `index midi time duration velocity`. Time is in seconds. MIDI 60 = middle C (C4). "
+        "Your job:\n"
+        "1. Classify EVERY note into either 'right' (melody / higher voice, usually MIDI >= 60) or 'left' (bass / chords / accompaniment, usually MIDI < 60).\n"
+        "2. Identify obvious noise/artifacts (very short isolated notes, out-of-key single blips) and put their indices in 'drop'.\n"
+        "3. Do NOT drop more than 15% of the notes.\n"
+        "4. Group left-hand notes that start within 60ms of each other and share a common time — treat these as chords, both hands unchanged in output.\n\n"
+        "Return ONLY a JSON object with this exact shape, no prose, no markdown:\n"
+        '{"right": [int, ...], "left": [int, ...], "drop": [int, ...]}\n'
+        "Every input index must appear in exactly one of the three arrays."
+    )
+
+    user_text = f"Total notes: {len(notes)}\n\nNotes:\n{notes_block}"
+
+    chat = LlmChat(
+        api_key=EMERGENT_LLM_KEY,
+        session_id=f"midi-refine-{uuid.uuid4()}",
+        system_message=system_message,
+    ).with_model("anthropic", "claude-sonnet-4-6")
+
+    response_text = await chat.send_message(UserMessage(text=user_text))
+    parsed = _extract_json(response_text or "")
+    if not parsed:
+        raise ValueError("LLM returned no parseable JSON")
+    return parsed
+
+
+@api_router.post("/refine-midi")
+async def refine_midi(payload: RefineRequest):
+    """Use Claude Sonnet 4.6 to tag notes with left/right hand and drop noise."""
+    if not EMERGENT_LLM_KEY:
+        raise HTTPException(500, "LLM key not configured")
+
+    original = [n.model_dump() for n in payload.notes]
+    if not original:
+        return {"notes": [], "stats": {"input": 0, "output": 0, "dropped": 0, "refined": False}}
+
+    # If too many notes, refine first MAX and pass rest through with heuristic hand
+    to_llm = original[:MAX_LLM_NOTES]
+    passthrough = original[MAX_LLM_NOTES:]
+
+    try:
+        classification = await _classify_hands(to_llm)
+    except Exception as e:
+        logger.warning(f"LLM refinement failed, using heuristic fallback: {e}")
+        classification = {"right": [], "left": [], "drop": []}
+        for i, n in enumerate(to_llm):
+            (classification["right"] if n["midi"] >= 60 else classification["left"]).append(i)
+
+    right_set = set(classification.get("right", []) or [])
+    left_set = set(classification.get("left", []) or [])
+    drop_set = set(classification.get("drop", []) or [])
+
+    # Enforce drop cap: max 15% of to_llm
+    drop_cap = max(0, int(len(to_llm) * 0.15))
+    if len(drop_set) > drop_cap:
+        # keep only the first drop_cap in original order
+        drop_set = set(list(drop_set)[:drop_cap])
+
+    refined: List[dict] = []
+    for i, n in enumerate(to_llm):
+        if i in drop_set:
+            continue
+        if i in left_set:
+            n["hand"] = "left"
+        elif i in right_set:
+            n["hand"] = "right"
+        else:
+            n["hand"] = "left" if n["midi"] < 60 else "right"
+        refined.append(n)
+
+    # Passthrough beyond MAX (simple heuristic hand)
+    for n in passthrough:
+        n["hand"] = "left" if n["midi"] < 60 else "right"
+        refined.append(n)
+
+    refined.sort(key=lambda x: (x["time"], x["midi"]))
+
+    return {
+        "notes": refined,
+        "stats": {
+            "input": len(original),
+            "output": len(refined),
+            "dropped": len(original) - len(refined),
+            "refined": True,
+        },
+    }
 
 
 app.include_router(api_router)
