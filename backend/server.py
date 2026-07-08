@@ -430,6 +430,83 @@ async def update_song(song_id: str, payload: EditSongRequest):
     return doc
 
 
+# ---------- AI video enhancements ----------
+class VideoEnhanceRequest(BaseModel):
+    song_name: str = ""
+    duration: float = 0
+    note_count: int = 0
+    chord_names: List[str] = Field(default_factory=list)
+    families: List[str] = Field(default_factory=list)
+    available_presets: List[str] = Field(default_factory=list)
+
+
+@api_router.post("/video/ai-enhance")
+async def video_ai_enhance(payload: VideoEnhanceRequest):
+    """LLM picks the best VFX preset and generates a title + tagline for the video."""
+    if not EMERGENT_LLM_KEY:
+        raise HTTPException(500, "LLM key not configured")
+
+    from emergentintegrations.llm.chat import LlmChat, UserMessage
+
+    system_message = (
+        "You are a music-video art director. Given a piece of music, pick the BEST VFX preset from the available list "
+        "and generate a short 2-4 word poetic TITLE and a one-line TAGLINE.\n\n"
+        "Choose presets that fit the mood:\n"
+        "- Slow / classical / ballad → aurora, ice, underwater, sunset, monochrome, gold\n"
+        "- Fast / energetic / EDM → cyberpunk, laser, storm, confetti, retro-arcade, neon-cyan\n"
+        "- Sad / minor → aurora, ice, monochrome, underwater\n"
+        "- Happy / major → sunset, rainbow-flow, gold, confetti\n"
+        "- Jazzy / bluesy → gold, sunset, fire, retro-arcade\n"
+        "- Electronic / synth → vaporwave, hologram, matrix, galaxy, neon-pink\n"
+        "- Epic / cinematic → storm, galaxy, starfield, fire\n\n"
+        "Return ONLY a JSON object, no prose:\n"
+        '{"preset_id": "one-of-the-available-preset-ids", "title": "Short Title", "tagline": "One-line tagline", "mood": "one-word mood"}'
+    )
+
+    user_text = (
+        f"Song: {payload.song_name or 'Untitled'}\n"
+        f"Duration: {payload.duration:.1f}s, notes: {payload.note_count}, "
+        f"instruments: {', '.join(payload.families) or 'piano'}\n"
+        f"Detected chords: {', '.join(payload.chord_names[:12]) or 'unknown'}\n"
+        f"Available presets: {', '.join(payload.available_presets)}"
+    )
+
+    chat = LlmChat(
+        api_key=EMERGENT_LLM_KEY,
+        session_id=f"video-enhance-{uuid.uuid4()}",
+        system_message=system_message,
+    ).with_model("anthropic", "claude-sonnet-4-6")
+
+    try:
+        response_text = await chat.send_message(UserMessage(text=user_text))
+        parsed = _extract_json(response_text or "")
+        if not parsed:
+            raise ValueError("no JSON")
+    except Exception as e:
+        logger.warning(f"AI enhance failed, using defaults: {e}")
+        parsed = {
+            "preset_id": (payload.available_presets or ["neon-cyan"])[0],
+            "title": payload.song_name or "Piano Performance",
+            "tagline": "Made with NEON.KEYS",
+            "mood": "neutral",
+        }
+
+    # Sanitize
+    preset_id = str(parsed.get("preset_id", "")).strip()
+    if preset_id not in payload.available_presets and payload.available_presets:
+        preset_id = payload.available_presets[0]
+    title = str(parsed.get("title", payload.song_name))[:40] or "Piano Performance"
+    tagline = str(parsed.get("tagline", ""))[:80]
+    mood = str(parsed.get("mood", ""))[:24]
+
+    return {
+        "preset_id": preset_id,
+        "title": title,
+        "tagline": tagline,
+        "mood": mood,
+    }
+
+
 app.include_router(api_router)
 
 app.add_middleware(

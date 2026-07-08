@@ -210,9 +210,19 @@ export function drawNote(ctx, x, y, w, h, style, color, alpha = 1) {
 }
 
 // ============ Piano rendering on canvas ============
-export function drawPiano(ctx, x0, y0, w, h, activeKeys, palette, keyFx) {
+export function drawPiano(ctx, x0, y0, w, h, activeKeys, palette, keyFx, trackColors) {
   const WHITE = 52;
   const wKeyW = w / WHITE;
+  const isMap = activeKeys instanceof Map;
+  const getMeta = (midi) => {
+    if (isMap) return activeKeys.get(midi) || null;
+    return activeKeys.has(midi) ? { hand: midi < 60 ? "left" : "right", track: "0" } : null;
+  };
+  const colorFor = (meta, defColor) => {
+    if (!meta) return null;
+    if (trackColors && meta.track != null && trackColors[meta.track]) return trackColors[meta.track];
+    return defColor;
+  };
   ctx.save();
   ctx.translate(x0, y0);
   // White keys
@@ -222,12 +232,14 @@ export function drawPiano(ctx, x0, y0, w, h, activeKeys, palette, keyFx) {
     const isBlack = [1, 3, 6, 8, 10].includes(pc);
     if (isBlack) continue;
     const kx = whiteIdx * wKeyW;
-    const active = activeKeys.has(m);
+    const meta = getMeta(m);
+    const active = !!meta;
     const g = ctx.createLinearGradient(0, 0, 0, h);
     if (active) {
-      const c1 = palette[0]; const c2 = hexA(palette[0], 0.6);
+      const c1 = colorFor(meta, palette[0]);
+      const c2 = hexA(c1, 0.6);
       g.addColorStop(0, c1); g.addColorStop(1, c2);
-      ctx.shadowColor = palette[0];
+      ctx.shadowColor = c1;
       ctx.shadowBlur = keyFx === "pulse" ? 32 : 22;
     } else {
       g.addColorStop(0, "#f2f2f2"); g.addColorStop(1, "#c8c8c8");
@@ -245,17 +257,18 @@ export function drawPiano(ctx, x0, y0, w, h, activeKeys, palette, keyFx) {
     const pc = m % 12;
     const isBlack = [1, 3, 6, 8, 10].includes(pc);
     if (!isBlack) { whiteIdx++; continue; }
-    // Previous white key is at whiteIdx-1; black key straddles boundary
     const bkX = (whiteIdx - 1) * wKeyW + wKeyW * 0.7;
     const bkW = wKeyW * 0.6;
     const bkH = h * 0.62;
-    const active = activeKeys.has(m);
+    const meta = getMeta(m);
+    const active = !!meta;
     if (active) {
-      ctx.shadowColor = palette[1];
+      const c = colorFor(meta, palette[1]);
+      ctx.shadowColor = c;
       ctx.shadowBlur = keyFx === "pulse" ? 28 : 20;
       const g = ctx.createLinearGradient(0, 0, 0, bkH);
-      g.addColorStop(0, palette[1]);
-      g.addColorStop(1, hexA(palette[1], 0.5));
+      g.addColorStop(0, c);
+      g.addColorStop(1, hexA(c, 0.5));
       ctx.fillStyle = g;
     } else {
       ctx.shadowBlur = 0;

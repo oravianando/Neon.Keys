@@ -1,7 +1,9 @@
 import React, { useEffect, useRef, useState } from "react";
+import axios from "axios";
 import * as Tone from "tone";
-import { Video, X, Download, Play, Square, Sparkles } from "lucide-react";
+import { Video, X, Download, Play, Square, Sparkles, Wand2 } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
 import { toast } from "sonner";
 import { createVideoRecorder } from "@/lib/videoRecorder";
 import {
@@ -15,13 +17,17 @@ import {
   keyXFractionCanvas,
   keyWidthFractionCanvas,
 } from "@/lib/vfx";
+
+const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
+
 const CANVAS_W = 1280;
 const CANVAS_H = 720;
 const PIANO_H = 160;
 const NOTES_H = CANVAS_H - PIANO_H;
 const LOOKAHEAD = 4;
+const INTRO_DURATION = 2.5;
 
-export default function VideoRecorderModal({ open, onOpenChange, song, sampler }) {
+export default function VideoRecorderModal({ open, onOpenChange, song, sampler, trackColors }) {
   const canvasRef = useRef(null);
   const rafRef = useRef(null);
   const recorderRef = useRef(null);
@@ -30,11 +36,16 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler }
   const [progress, setProgress] = useState(0);
   const [videoUrl, setVideoUrl] = useState(null);
   const [videoExt, setVideoExt] = useState("webm");
+  const [aiEnhancing, setAiEnhancing] = useState(false);
+  const [aiTitle, setAiTitle] = useState("");
+  const [aiTagline, setAiTagline] = useState("");
+  const [showTitleCard, setShowTitleCard] = useState(true);
+  const [showSubtitles, setShowSubtitles] = useState(true);
 
   // playback engine state refs
   const playStartRef = useRef(0);
   const noteIdxRef = useRef(0);
-  const activeKeysRef = useRef(new Set());
+  const activeKeysRef = useRef(new Map()); // midi -> {hand, track}
   const activeReleasesRef = useRef([]);
   const particlesRef = useRef([]);
   const timeRef = useRef(0);
@@ -52,7 +63,7 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler }
       try { recorderRef.current.stop(); } catch (e) { /* ignore */ }
       recorderRef.current = null;
     }
-    activeKeysRef.current = new Set();
+    activeKeysRef.current = new Map();
     activeReleasesRef.current = [];
     particlesRef.current = [];
     timeRef.current = 0;
@@ -73,24 +84,22 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler }
     canvas.height = CANVAS_H;
 
     let previewT = 0;
-    const previewActive = new Set();
+    const previewActive = new Map();
     // Cycle a few demo keys for preview
     const previewLoop = () => {
       if (state === "recording") return;
       previewT += 1 / 60;
-      // sample active keys from song
       previewActive.clear();
       if (song?.notes) {
         for (const n of song.notes) {
           if (n.time <= (previewT % (song.duration || 4)) && (previewT % (song.duration || 4)) < n.time + n.duration) {
-            previewActive.add(n.midi);
+            previewActive.set(n.midi, { hand: n.hand || (n.midi < 60 ? "left" : "right"), track: n.track !== undefined ? String(n.track) : "0" });
           }
         }
       } else {
-        // fallback: cycle a chord
-        [60, 64, 67, 72].forEach((m) => (previewT % 2 < 1 ? previewActive.add(m) : null));
+        [60, 64, 67, 72].forEach((m) => (previewT % 2 < 1 ? previewActive.set(m, { hand: "right", track: "0" }) : null));
       }
-      renderFrame(ctx, chosen, previewT, previewT % (song?.duration || 4), song, previewActive, []);
+      renderFrame(ctx, chosen, previewT, previewT % (song?.duration || 4), song, previewActive, [], null);
       if (state !== "recording") rafRef.current = requestAnimationFrame(previewLoop);
     };
     rafRef.current = requestAnimationFrame(previewLoop);
@@ -120,43 +129,51 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler }
     recorderRef.current = recorder;
     setVideoExt(recorder.fileExtension);
 
-    activeKeysRef.current = new Set();
+    activeKeysRef.current = new Map();
     activeReleasesRef.current = [];
     particlesRef.current = [];
     noteIdxRef.current = 0;
     playStartRef.current = performance.now() / 1000;
 
     recorder.start();
-    const duration = song.duration + 1;
+    const useIntro = showTitleCard && (aiTitle || song.name);
+    const introDur = useIntro ? INTRO_DURATION : 0;
+    const duration = introDur + song.duration + 1;
 
     const loop = () => {
       const now = performance.now() / 1000;
       const elapsed = now - playStartRef.current;
+      const songTime = Math.max(0, elapsed - introDur);
       timeRef.current = elapsed;
       setProgress(Math.min(100, (elapsed / duration) * 100));
 
-      // Trigger notes
-      while (
-        noteIdxRef.current < song.notes.length &&
-        song.notes[noteIdxRef.current].time <= elapsed
-      ) {
-        const n = song.notes[noteIdxRef.current];
-        const noteName = Tone.Frequency(n.midi, "midi").toNote();
-        try {
-          sampler.triggerAttackRelease(noteName, Math.max(n.duration, 0.1), undefined, n.velocity);
-        } catch (e) { /* ignore */ }
-        activeKeysRef.current.add(n.midi);
-        activeReleasesRef.current.push({ midi: n.midi, endsAt: elapsed + n.duration });
-        // Particles at key position
-        const xFrac = keyXFractionCanvas(n.midi);
-        const px = xFrac * CANVAS_W;
-        const py = NOTES_H;
-        spawnParticles(particlesRef.current, px, py, chosen.particle, chosen.palette[0]);
-        noteIdxRef.current++;
+      // Trigger notes (only after intro finishes)
+      if (elapsed >= introDur) {
+        while (
+          noteIdxRef.current < song.notes.length &&
+          song.notes[noteIdxRef.current].time <= songTime
+        ) {
+          const n = song.notes[noteIdxRef.current];
+          const noteName = Tone.Frequency(n.midi, "midi").toNote();
+          try {
+            sampler.triggerAttackRelease(noteName, Math.max(n.duration, 0.1), undefined, n.velocity);
+          } catch (e) { /* ignore */ }
+          const trackId = n.track !== undefined ? String(n.track) : "0";
+          const hand = n.hand || (n.midi < 60 ? "left" : "right");
+          activeKeysRef.current.set(n.midi, { hand, track: trackId });
+          activeReleasesRef.current.push({ midi: n.midi, endsAt: songTime + n.duration });
+          // Particles at key position (colored by track)
+          const xFrac = keyXFractionCanvas(n.midi);
+          const px = xFrac * CANVAS_W;
+          const py = NOTES_H;
+          const tc = trackColors?.[trackId];
+          spawnParticles(particlesRef.current, px, py, chosen.particle, tc || chosen.palette[0]);
+          noteIdxRef.current++;
+        }
       }
       // Release
       activeReleasesRef.current = activeReleasesRef.current.filter((r) => {
-        if (r.endsAt <= elapsed) {
+        if (r.endsAt <= songTime) {
           activeKeysRef.current.delete(r.midi);
           return false;
         }
@@ -164,7 +181,17 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler }
       });
 
       updateParticles(particlesRef.current);
-      renderFrame(ctx, chosen, elapsed, elapsed, song, activeKeysRef.current, particlesRef.current);
+      const overlay = {
+        introDur,
+        elapsed,
+        songTime,
+        title: aiTitle || song.name,
+        tagline: aiTagline,
+        showSubtitles,
+        chords: song.chords || [],
+        trackColors: trackColors || {},
+      };
+      renderFrame(ctx, chosen, elapsed, songTime, song, activeKeysRef.current, particlesRef.current, overlay);
 
       if (elapsed >= duration) {
         stopRecording();
@@ -201,6 +228,35 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler }
     a.click();
   };
 
+  const runAiEnhance = async () => {
+    if (!song) return;
+    setAiEnhancing(true);
+    try {
+      const res = await axios.post(
+        `${API}/video/ai-enhance`,
+        {
+          song_name: song.name || "",
+          duration: song.duration || 0,
+          note_count: song.notes?.length || 0,
+          chord_names: (song.chords || []).slice(0, 20).map((c) => c.name),
+          families: (song.tracks || []).map((t) => t.family),
+          available_presets: VFX_PRESETS.map((p) => p.id),
+        },
+        { timeout: 30000 },
+      );
+      const { preset_id, title, tagline, mood } = res.data;
+      if (preset_id) setPreset(preset_id);
+      if (title) setAiTitle(title);
+      if (tagline) setAiTagline(tagline);
+      toast.success(`AI picked ${preset_id}${mood ? ` (${mood} mood)` : ""}`);
+    } catch (err) {
+      console.error("AI enhance failed", err);
+      toast.error("AI enhance failed");
+    } finally {
+      setAiEnhancing(false);
+    }
+  };
+
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) cleanup(); onOpenChange(v); }}>
       <DialogContent className="max-w-4xl bg-[#050505] border-white/10 text-white" data-testid="video-recorder-modal">
@@ -211,6 +267,51 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler }
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
+          {/* AI Enhance panel */}
+          <div className="glass-bright rounded-xl p-3 flex flex-wrap items-center gap-3" data-testid="ai-enhance-panel">
+            <div className="flex items-center gap-2">
+              <Wand2 size={13} className="text-yellow-300" />
+              <span className="text-[10px] uppercase tracking-[0.2em] text-white/60">AI</span>
+            </div>
+            <button
+              onClick={runAiEnhance}
+              disabled={aiEnhancing || !song || state === "recording"}
+              className="flex items-center gap-1.5 px-3 h-8 rounded bg-yellow-300 text-black text-[11px] font-bold uppercase tracking-wider hover:shadow-[0_0_16px_rgba(253,224,71,0.6)] transition-all disabled:opacity-40 disabled:cursor-not-allowed"
+              data-testid="ai-enhance-button"
+              title="Let Claude pick the best VFX preset + generate a title & tagline"
+            >
+              <Wand2 size={12} className={aiEnhancing ? "animate-spin" : ""} />
+              {aiEnhancing ? "Thinking…" : "AI Suggest"}
+            </button>
+            {aiTitle && (
+              <div className="flex items-center gap-2 border-l border-white/10 pl-3 text-xs" data-testid="ai-title-preview">
+                <span className="text-white/40 uppercase tracking-widest text-[9px]">Title</span>
+                <span className="font-heading font-bold neon-cyan">{aiTitle}</span>
+                {aiTagline && <span className="text-white/50 italic">— {aiTagline}</span>}
+              </div>
+            )}
+            <div className="ml-auto flex items-center gap-4">
+              <label className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-white/60">
+                <Switch
+                  checked={showTitleCard}
+                  onCheckedChange={setShowTitleCard}
+                  disabled={state === "recording"}
+                  data-testid="toggle-title-card"
+                />
+                Title Card
+              </label>
+              <label className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-white/60">
+                <Switch
+                  checked={showSubtitles}
+                  onCheckedChange={setShowSubtitles}
+                  disabled={state === "recording"}
+                  data-testid="toggle-chord-subtitles"
+                />
+                Chord Subtitles
+              </label>
+            </div>
+          </div>
+
           {/* VFX preset picker */}
           <div className="glass-bright rounded-xl p-3">
             <div className="flex items-center gap-2 mb-2">
@@ -298,7 +399,7 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler }
           </div>
 
           <p className="text-xs text-white/40 font-mono">
-            Video capture uses your browser's MediaRecorder API. Output format: {videoExt.toUpperCase()}. Audio + visuals are recorded together.
+            Video capture uses your browser&apos;s MediaRecorder API. Output format: {videoExt.toUpperCase()}. Audio + visuals are recorded together.
           </p>
         </div>
       </DialogContent>
@@ -307,11 +408,14 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler }
 }
 
 // ------------------- Frame renderer -------------------
-function renderFrame(ctx, preset, timeAbs, currentTime, song, activeKeys, particles) {
+function renderFrame(ctx, preset, timeAbs, currentTime, song, activeKeys, particles, overlay) {
   const w = CANVAS_W, h = CANVAS_H;
+  const tracksColors = overlay?.trackColors || {};
+
   // Beat shake + zoom on beat
   let shakeX = 0, shakeY = 0, zoom = 1;
-  const beatActive = activeKeys.size > 0;
+  const activeSize = activeKeys instanceof Map ? activeKeys.size : activeKeys.size;
+  const beatActive = activeSize > 0;
   if (preset.beatShake > 0 && beatActive) {
     shakeX = (Math.random() - 0.5) * preset.beatShake * 20;
     shakeY = (Math.random() - 0.5) * preset.beatShake * 20;
@@ -321,7 +425,6 @@ function renderFrame(ctx, preset, timeAbs, currentTime, song, activeKeys, partic
   }
 
   ctx.save();
-  // Apply zoom + shake around center
   ctx.translate(w / 2 + shakeX, h / 2 + shakeY);
   ctx.scale(zoom, zoom);
   ctx.translate(-w / 2, -h / 2);
@@ -346,7 +449,9 @@ function renderFrame(ctx, preset, timeAbs, currentTime, song, activeKeys, partic
       const wFrac = keyWidthFractionCanvas(n.midi);
       const nx = xFrac * w - (wFrac * w) / 2 + 2;
       const nw = Math.max(4, wFrac * w - 3);
-      const color = n.hand === "left" ? preset.palette[1] : preset.palette[0];
+      const trackId = n.track !== undefined ? String(n.track) : "0";
+      const tc = tracksColors[trackId];
+      const color = tc || (n.hand === "left" ? preset.palette[1] : preset.palette[0]);
       drawNote(ctx, nx, topY, nw, noteH, preset.note, color, 1);
     }
   }
@@ -359,30 +464,68 @@ function renderFrame(ctx, preset, timeAbs, currentTime, song, activeKeys, partic
   ctx.shadowBlur = 0;
   ctx.restore();
 
-  // Particles above piano
   drawParticles(ctx, particles, preset.trails);
 
   // Piano keys
-  drawPiano(ctx, 0, NOTES_H, w, PIANO_H, activeKeys, preset.palette, preset.keyFx);
+  drawPiano(ctx, 0, NOTES_H, w, PIANO_H, activeKeys, preset.palette, preset.keyFx, tracksColors);
 
   ctx.restore(); // undo zoom+shake
 
-  // Chromatic aberration overlay AFTER main render
+  // Chromatic aberration
   const cd = preset.chromaDepth || 0;
   if (preset.chromatic || cd > 0) {
     const off = Math.max(2, 12 * (cd || 0.4));
     ctx.save();
     ctx.globalCompositeOperation = "screen";
     ctx.globalAlpha = 0.15 + 0.35 * cd;
-    // Cyan shift left
     ctx.filter = "hue-rotate(180deg)";
     ctx.drawImage(ctx.canvas, -off, 0);
-    // Red shift right
     ctx.filter = "hue-rotate(0deg)";
     ctx.drawImage(ctx.canvas, off, 0);
     ctx.filter = "none";
     ctx.globalCompositeOperation = "source-over";
     ctx.globalAlpha = 1;
     ctx.restore();
+  }
+
+  // AI title card (during intro)
+  if (overlay && overlay.introDur > 0 && overlay.elapsed < overlay.introDur) {
+    const t = overlay.elapsed;
+    const fadeIn = Math.min(1, t / 0.4);
+    const fadeOut = Math.min(1, (overlay.introDur - t) / 0.5);
+    const alpha = Math.max(0, Math.min(fadeIn, fadeOut));
+    ctx.save();
+    ctx.fillStyle = `rgba(0,0,0,${0.55 * alpha})`;
+    ctx.fillRect(0, 0, w, h);
+    ctx.globalAlpha = alpha;
+    ctx.textAlign = "center";
+    ctx.fillStyle = preset.palette[0];
+    ctx.shadowColor = preset.palette[0];
+    ctx.shadowBlur = 30;
+    ctx.font = "bold 88px 'Unbounded', sans-serif";
+    ctx.fillText(overlay.title || "", w / 2, h / 2 - 20);
+    ctx.shadowBlur = 12;
+    ctx.font = "24px monospace";
+    ctx.fillStyle = "#ffffff";
+    if (overlay.tagline) ctx.fillText(overlay.tagline, w / 2, h / 2 + 40);
+    ctx.restore();
+  }
+
+  // Chord subtitle (bottom-center) during song playback
+  if (overlay && overlay.showSubtitles && overlay.elapsed >= overlay.introDur && overlay.chords?.length) {
+    const st = overlay.songTime;
+    const active = [...overlay.chords].reverse().find((c) => c.time <= st);
+    if (active) {
+      ctx.save();
+      ctx.textAlign = "center";
+      ctx.font = "bold 42px 'Unbounded', sans-serif";
+      ctx.fillStyle = "rgba(0,0,0,0.55)";
+      ctx.fillRect(w / 2 - 120, NOTES_H - 70, 240, 50);
+      ctx.fillStyle = preset.palette[0];
+      ctx.shadowColor = preset.palette[0];
+      ctx.shadowBlur = 20;
+      ctx.fillText(active.name, w / 2, NOTES_H - 32);
+      ctx.restore();
+    }
   }
 }

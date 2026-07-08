@@ -1,30 +1,59 @@
-import React, { useEffect, useRef } from "react";
-import { KEYS, isBlackKey } from "@/lib/piano";
+import React, { useEffect, useImperativeHandle, useRef, forwardRef } from "react";
+import { isBlackKey } from "@/lib/piano";
 
 /*
   RollingNotes: Canvas that renders falling note bars synchronized with playback.
-  Props:
-    song, currentTime, lookahead, noteColor, keyRects: {midi: {left, width}}
+  Also renders impact particles that can be spawned via ref.spawnAt(midi, hand).
 */
-export default function RollingNotes({
+const RollingNotes = forwardRef(function RollingNotes({
   song,
   currentTime,
   lookahead = 4,
   noteColor = "cyan",
   keyRects,
   practiceMode = "both",
-}) {
+  trackColors,
+}, ref) {
   const canvasRef = useRef(null);
   const containerRef = useRef(null);
   const currentTimeRef = useRef(currentTime);
   const songRef = useRef(song);
   const keyRectsRef = useRef(keyRects);
   const practiceModeRef = useRef(practiceMode);
+  const trackColorsRef = useRef(trackColors);
+  const particlesRef = useRef([]);
 
   useEffect(() => { currentTimeRef.current = currentTime; }, [currentTime]);
   useEffect(() => { songRef.current = song; }, [song]);
   useEffect(() => { keyRectsRef.current = keyRects; }, [keyRects]);
   useEffect(() => { practiceModeRef.current = practiceMode; }, [practiceMode]);
+  useEffect(() => { trackColorsRef.current = trackColors; }, [trackColors]);
+
+  useImperativeHandle(ref, () => ({
+    spawnAt(midi, hand, trackId) {
+      const rect = keyRectsRef.current?.[midi];
+      const canvas = canvasRef.current;
+      if (!rect || !canvas) return;
+      const x = rect.left + rect.width / 2;
+      const y = canvas.clientHeight - 4;
+      const tc = trackColorsRef.current && trackId != null ? trackColorsRef.current[String(trackId)] : null;
+      const color = tc || (hand === "left" ? "#FF003C" : "#00F0FF");
+      const count = 14;
+      for (let i = 0; i < count; i++) {
+        const a = -Math.PI / 2 + (Math.random() - 0.5) * Math.PI * 0.9;
+        const speed = 2 + Math.random() * 4;
+        particlesRef.current.push({
+          x, y,
+          px: x, py: y,
+          vx: Math.cos(a) * speed + (Math.random() - 0.5) * 0.8,
+          vy: Math.sin(a) * speed,
+          life: 1,
+          size: 1.5 + Math.random() * 2.5,
+          color,
+        });
+      }
+    },
+  }));
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -115,9 +144,11 @@ export default function RollingNotes({
 
         const isBlack = isBlackKey(n.midi);
         const palette = colors[noteColor] || colors.cyan;
+        const tc = trackColorsRef.current && n.track != null ? trackColorsRef.current[String(n.track)] : null;
         let color;
-        if (n.hand === "left") {
-          // Left hand → secondary color (chord/bass accent)
+        if (tc) {
+          color = tc;
+        } else if (n.hand === "left") {
           color = palette.black;
         } else if (n.hand === "right") {
           color = palette.white;
@@ -143,6 +174,34 @@ export default function RollingNotes({
         ctx.globalAlpha = 1;
       }
 
+      // Update + draw particles (impact effects)
+      const parts = particlesRef.current;
+      for (let i = parts.length - 1; i >= 0; i--) {
+        const p = parts[i];
+        p.px = p.x; p.py = p.y;
+        p.x += p.vx;
+        p.y += p.vy;
+        p.vy += 0.15;
+        p.life -= 1 / 60 * 1.4;
+        if (p.life <= 0) { parts.splice(i, 1); continue; }
+        ctx.globalAlpha = Math.max(0, p.life);
+        ctx.strokeStyle = p.color;
+        ctx.lineWidth = Math.max(1, p.size * 0.6);
+        ctx.lineCap = "round";
+        ctx.shadowColor = p.color;
+        ctx.shadowBlur = 10;
+        ctx.beginPath();
+        ctx.moveTo(p.px, p.py);
+        ctx.lineTo(p.x, p.y);
+        ctx.stroke();
+        ctx.fillStyle = p.color;
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, p.size, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      ctx.globalAlpha = 1;
+      ctx.shadowBlur = 0;
+
       raf = requestAnimationFrame(draw);
     };
     draw();
@@ -162,7 +221,9 @@ export default function RollingNotes({
       <canvas ref={canvasRef} className="absolute inset-0" />
     </div>
   );
-}
+});
+
+export default RollingNotes;
 
 function roundRect(ctx, x, y, w, h, r) {
   const rr = Math.min(r, w / 2, h / 2);

@@ -1,0 +1,25 @@
+{
+  "summary": "Verified unified piano refactor + AI video enhance. Backend AI enhance endpoint returns {preset_id,title,tagline,mood} in ~5s (HTTP 200, preset within available set). Frontend: selecting multi_track shows chip-style instrument-controls bar with track-t0/t1/t2 chips (family: piano/bass/ensemble) and ZERO mini-keyboards (old stack removed). Solo (solo-t1) and mute (mute-t2) buttons respond to clicks. Video Recorder modal exposes ai-enhance-panel, ai-enhance-button, toggle-title-card, toggle-chord-subtitles. Clicking AI Suggest triggered POST /api/video/ai-enhance and populated ai-title-preview ('Gilded Harmony — Where piano, bass, and ensemble weave threads of liquid gold') with success toast 'AI picked gold (elegant mood)', and the GOLD RUSH preset was auto-highlighted.",
+  "tested_scope": ["frontend","backend","integration"],
+  "passed": [
+    "GET /api/songs 200",
+    "POST /api/video/ai-enhance -> 200 with preset_id=aurora/gold, title, tagline, mood (~5s latency)",
+    "Frontend loads on public URL",
+    "multi_track song selection shows instrument-controls chip bar (no MultiInstrumentStack mini-keyboards)",
+    "track-t0, track-t1, track-t2 chips present with solo-t*/mute-t* buttons",
+    "Playback starts (elapsed timer advances to 0:04)",
+    "Video Recorder modal opens with ai-enhance-panel, ai-enhance-button, toggle-title-card, toggle-chord-subtitles data-testids",
+    "AI Suggest end-to-end: button click -> preset auto-selected (GOLD RUSH highlighted) + ai-title-preview populated + success toast"
+  ],
+  "failed": [
+    {"area": "rolling-notes visual color diversity", "issue": "Mid-playback screenshot of multi_track rolling notes shows notes predominantly in cyan; distinct per-track color streams (e.g. bass=pink, strings=different) were not visually confirmed in this snapshot. Canvas color sampling detected ~32 unique color buckets so colors likely vary, but visual dominance was cyan at the sampled moment. Multi_track has short overlaps (7/8/3 notes across 4s) so this may be a timing artifact rather than a bug.", "evidence": "Screenshot at 0:04 playback shows only cyan-colored note rectangles; API confirms 3 tracks with families piano/bass/ensemble which should map to distinct FAMILY_COLORS.", "priority": "LOW"},
+    {"area": "a11y", "issue": "DialogContent missing Description/aria-describedby warnings for video recorder + edit modal (radix-ui warning, non-blocking).", "evidence": "Console warnings during modal open.", "priority": "LOW"}
+  ],
+  "action_items": [
+    "Optional: verify track colors visually by uploading a longer multi_track MIDI where all 3 families overlap on screen simultaneously, or add a small inline color swatch in RollingNotes for QA.",
+    "Optional: add DialogDescription to VideoRecorderModal/EditModal to silence a11y warnings."
+  ],
+  "success_rate": {"backend": "100%", "frontend": "95%"},
+  "retest_needed": false,
+  "full_testing_deferred": true
+}

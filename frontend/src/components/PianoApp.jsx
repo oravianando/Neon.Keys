@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import axios from "axios";
 import { Piano as PianoIcon } from "lucide-react";
 import PianoKeyboard from "@/components/PianoKeyboard";
@@ -13,8 +13,11 @@ import ChordStrip from "@/components/ChordStrip";
 import ToolBar from "@/components/ToolBar";
 import { MidiEditorOverlay, EditToolbar } from "@/components/MidiEditor";
 import VideoRecorderModal from "@/components/VideoRecorderModal";
-import MultiInstrumentStack from "@/components/MultiInstrumentStack";
+import InstrumentControls from "@/components/MultiInstrumentStack";
+import { FAMILY_COLORS } from "@/lib/instruments";
 import { toast } from "sonner";
+
+const TRACK_PALETTE = ["#00F0FF", "#FF00E6", "#7CFF9A", "#FFD700", "#FFA500", "#B388FF", "#00FF88", "#FF6B6B"];
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
 
@@ -44,15 +47,52 @@ export default function PianoApp() {
   const [editSnapshot, setEditSnapshot] = useState(null);
   const [savingEdit, setSavingEdit] = useState(false);
   const [videoOpen, setVideoOpen] = useState(false);
+  const [mutedTracks, setMutedTracks] = useState(new Set());
+  const [soloedTrack, setSoloedTrack] = useState(null);
   const audioElRef = useRef(null);
   const keyElsRef = useRef({});
   const boardWrapRef = useRef(null);
+  const rollingNotesRef = useRef(null);
+
+  // Compute per-track colors
+  const trackColors = useMemo(() => {
+    const map = {};
+    currentSong?.tracks?.forEach((t, idx) => {
+      const id = String(t.id);
+      map[id] = FAMILY_COLORS[t.family] || TRACK_PALETTE[idx % TRACK_PALETTE.length];
+    });
+    return map;
+  }, [currentSong]);
 
   const engine = usePianoEngine({
     volume: settings.volume,
     sustain: settings.sustain,
     practiceMode: settings.practice_mode,
+    mutedTracks,
+    soloedTrack,
+    onNoteStart: (midi, hand, trackId) => {
+      rollingNotesRef.current?.spawnAt(midi, hand, trackId);
+    },
   });
+
+  const toggleMute = useCallback((trackId) => {
+    setMutedTracks((prev) => {
+      const next = new Set(prev);
+      if (next.has(trackId)) next.delete(trackId);
+      else next.add(trackId);
+      return next;
+    });
+  }, []);
+
+  const toggleSolo = useCallback((trackId) => {
+    setSoloedTrack((prev) => (String(prev) === trackId ? null : trackId));
+  }, []);
+
+  // Reset mute/solo when song changes
+  useEffect(() => {
+    setMutedTracks(new Set());
+    setSoloedTrack(null);
+  }, [currentSong?.id]);
 
   // Load demo songs, user songs, settings on mount
   useEffect(() => {
@@ -524,12 +564,14 @@ export default function PianoApp() {
                 lookahead={settings.lookahead}
               />
               <RollingNotes
+                ref={rollingNotesRef}
                 song={currentSong}
                 currentTime={engine.currentTime}
                 lookahead={settings.lookahead}
                 noteColor={settings.note_color}
                 keyRects={keyRects}
                 practiceMode={settings.practice_mode}
+                trackColors={trackColors}
               />
               {editMode && (
                 <MidiEditorOverlay
@@ -573,12 +615,17 @@ export default function PianoApp() {
                 onKeyDown={(m) => engine.playNote(m, 0.6, 0.85)}
                 showLabels={settings.show_labels}
                 registerKeyRef={registerKeyRef}
+                trackColors={trackColors}
               />
             </div>
           </div>
-          <MultiInstrumentStack
+          <InstrumentControls
             tracks={currentSong?.tracks}
-            currentTime={engine.currentTime}
+            trackColors={trackColors}
+            mutedTracks={mutedTracks}
+            soloedTrack={soloedTrack}
+            onMuteToggle={toggleMute}
+            onSoloToggle={toggleSolo}
           />
         </section>
       </main>
@@ -588,6 +635,7 @@ export default function PianoApp() {
         onOpenChange={setVideoOpen}
         song={currentSong}
         sampler={engine.getSampler()}
+        trackColors={trackColors}
       />
     </div>
   );
