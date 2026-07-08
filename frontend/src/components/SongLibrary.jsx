@@ -2,6 +2,11 @@ import React, { useRef } from "react";
 import { Upload, Music2, Sparkles, Trash2, Loader2 } from "lucide-react";
 import { toast } from "sonner";
 
+const CONVERT_MODES = [
+  { id: "single", label: "Single Track" },
+  { id: "multi", label: "Multi-Track (AI split)" },
+];
+
 export default function SongLibrary({
   demoSongs,
   userSongs,
@@ -10,6 +15,8 @@ export default function SongLibrary({
   onUpload,
   onDelete,
   converting,
+  convertMode = "single",
+  onConvertModeChange,
 }) {
   const inputRef = useRef(null);
 
@@ -73,6 +80,27 @@ export default function SongLibrary({
           </div>
         </div>
       )}
+
+      <div className="border-t border-white/5 pt-2" data-testid="convert-mode-picker">
+        <div className="text-[9px] uppercase tracking-[0.2em] text-white/40 mb-1">Audio → MIDI</div>
+        <div className="flex gap-1">
+          {CONVERT_MODES.map((m) => (
+            <button
+              key={m.id}
+              onClick={() => onConvertModeChange?.(m.id)}
+              disabled={!!converting}
+              className={`flex-1 px-2 h-7 rounded text-[10px] uppercase tracking-wider transition-all border ${
+                convertMode === m.id
+                  ? "bg-[#00F0FF] text-black border-[#00F0FF]"
+                  : "border-white/15 text-white/70 hover:border-[#00F0FF] hover:text-[#00F0FF]"
+              } disabled:opacity-40`}
+              data-testid={`convert-mode-${m.id}`}
+            >
+              {m.label}
+            </button>
+          ))}
+        </div>
+      </div>
 
       <div className="flex-1 overflow-y-auto piano-scroll pr-1 space-y-4">
         {userSongs.length > 0 && (

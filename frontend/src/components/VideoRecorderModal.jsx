@@ -36,6 +36,20 @@ function dimsForResolution(id) {
   return { w: res.width, h: res.height, pianoH, notesH: res.height - pianoH, fps: res.fps, bitrate: res.bitrate };
 }
 
+// Estimate final file-size in MB for a given resolution + song duration (seconds).
+// Formula: (video bitrate + ~128kbps audio) * duration / 8 / 1024 / 1024
+function estimateSizeMB(resId, seconds) {
+  const r = RESOLUTIONS.find((x) => x.id === resId) || RESOLUTIONS[0];
+  const audio = 128_000; // Opus/AAC ~128 kbps
+  const bytes = ((r.bitrate + audio) * seconds) / 8;
+  const mb = bytes / (1024 * 1024);
+  if (mb < 1) return `${Math.round(mb * 1024)}KB`;
+  if (mb < 100) return `${mb.toFixed(1)}MB`;
+  return `${Math.round(mb)}MB`;
+}
+
+const FOURK_DURATION_LIMIT_SECONDS = 180;
+
 export default function VideoRecorderModal({ open, onOpenChange, song, sampler, trackColors }) {
   const canvasRef = useRef(null);
   const rafRef = useRef(null);
@@ -285,25 +299,30 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
 
         <div className="flex flex-col gap-4">
           {/* Resolution + AI Enhance panel */}
-          <div className="glass-bright rounded-xl p-3 flex flex-wrap items-center gap-3" data-testid="ai-enhance-panel">
-            <div className="flex items-center gap-2">
+          <div className="glass-bright rounded-xl p-3 flex flex-wrap items-center gap-3" data-testid="ai-enhance-panel">            <div className="flex items-center gap-2">
               <span className="text-[10px] uppercase tracking-[0.2em] text-white/60">Quality</span>
               <div className="flex gap-1" data-testid="resolution-picker">
-                {RESOLUTIONS.map((r) => (
-                  <button
-                    key={r.id}
-                    onClick={() => setResolutionId(r.id)}
-                    disabled={state === "recording"}
-                    className={`px-2.5 h-8 rounded text-[11px] uppercase tracking-wider transition-all border ${
-                      resolutionId === r.id
-                        ? "bg-[#00F0FF] text-black border-[#00F0FF]"
-                        : "border-white/15 text-white/70 hover:border-[#00F0FF] hover:text-[#00F0FF]"
-                    } disabled:opacity-40`}
-                    data-testid={`resolution-${r.id}`}
-                  >
-                    {r.label}
-                  </button>
-                ))}
+                {RESOLUTIONS.map((r) => {
+                  const dur = (song?.duration || 0) + INTRO_DURATION + 1;
+                  const size = estimateSizeMB(r.id, dur);
+                  return (
+                    <button
+                      key={r.id}
+                      onClick={() => setResolutionId(r.id)}
+                      disabled={state === "recording"}
+                      className={`px-2.5 h-10 rounded text-[11px] uppercase tracking-wider transition-all border flex flex-col items-center justify-center leading-tight ${
+                        resolutionId === r.id
+                          ? "bg-[#00F0FF] text-black border-[#00F0FF]"
+                          : "border-white/15 text-white/70 hover:border-[#00F0FF] hover:text-[#00F0FF]"
+                      } disabled:opacity-40`}
+                      data-testid={`resolution-${r.id}`}
+                      title={`${r.width}×${r.height} @ ${r.fps}fps, ${(r.bitrate / 1_000_000).toFixed(0)}Mbps`}
+                    >
+                      <span className="font-bold">{r.label}</span>
+                      <span className={`text-[9px] font-mono opacity-70`} data-testid={`size-${r.id}`}>~{size}</span>
+                    </button>
+                  );
+                })}
               </div>
             </div>
             <div className="flex items-center gap-2 border-l border-white/10 pl-3">
@@ -375,6 +394,18 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
           </div>
 
           {/* Canvas preview */}
+          {resolutionId === "4k" && (song?.duration || 0) > FOURK_DURATION_LIMIT_SECONDS && (
+            <div
+              className="flex items-start gap-2 rounded-lg border border-yellow-300/40 bg-yellow-300/10 px-3 py-2 text-[11px] text-yellow-200"
+              data-testid="fourk-duration-warning"
+            >
+              <span className="text-yellow-300 font-bold uppercase tracking-wider mr-1">4K warning</span>
+              <span className="font-mono">
+                This song is {Math.round(song.duration)}s (&gt; {FOURK_DURATION_LIMIT_SECONDS}s). Recording at 4K may exceed browser memory
+                and slow rendering. Consider using FHD for songs longer than 3 minutes.
+              </span>
+            </div>
+          )}
           <canvas
             ref={canvasRef}
             className="w-full rounded-xl border border-white/10 bg-black"

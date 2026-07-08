@@ -14,6 +14,7 @@ import ToolBar from "@/components/ToolBar";
 import { MidiEditorOverlay, EditToolbar } from "@/components/MidiEditor";
 import VideoRecorderModal from "@/components/VideoRecorderModal";
 import InstrumentControls from "@/components/MultiInstrumentStack";
+import TrackPianoStack from "@/components/TrackPianoStack";
 import { FAMILY_COLORS } from "@/lib/instruments";
 import { toast } from "sonner";
 
@@ -49,6 +50,7 @@ export default function PianoApp() {
   const [videoOpen, setVideoOpen] = useState(false);
   const [mutedTracks, setMutedTracks] = useState(new Set());
   const [soloedTrack, setSoloedTrack] = useState(null);
+  const [convertMode, setConvertMode] = useState("single"); // 'single' | 'multi'
   const audioElRef = useRef(null);
   const keyElsRef = useRef({});
   const boardWrapRef = useRef(null);
@@ -223,6 +225,22 @@ export default function PianoApp() {
               parsed.notes = refineRes.data.notes;
               parsed.chords = refineRes.data.chords || [];
               parsed.difficulty = settings.difficulty;
+              // If multi-track conversion requested, split notes by hand into tracks
+              if (convertMode === "multi") {
+                const rightNotes = [];
+                const leftNotes = [];
+                for (const n of parsed.notes) {
+                  const t = (n.hand === "left") ? 1 : 0;
+                  const clone = { ...n, track: t };
+                  if (t === 0) { rightNotes.push(clone); }
+                  else { leftNotes.push(clone); }
+                }
+                parsed.notes = [...rightNotes, ...leftNotes].sort((a, b) => a.time - b.time);
+                parsed.tracks = [
+                  { id: "t0", name: "Melody", program: 0, family: "piano", isDrum: false, notes: rightNotes },
+                  { id: "t1", name: "Bass",   program: 32, family: "bass", isDrum: false, notes: leftNotes },
+                ].filter((t) => t.notes.length > 0);
+              }
               const stats = refineRes.data.stats || {};
               if (stats.refined) {
                 toast.success(
@@ -497,6 +515,8 @@ export default function PianoApp() {
             onUpload={handleUpload}
             onDelete={handleDelete}
             converting={converting}
+            convertMode={convertMode}
+            onConvertModeChange={setConvertMode}
           />
         </aside>
 
@@ -626,6 +646,13 @@ export default function PianoApp() {
             soloedTrack={soloedTrack}
             onMuteToggle={toggleMute}
             onSoloToggle={toggleSolo}
+          />
+          <TrackPianoStack
+            tracks={currentSong?.tracks}
+            currentTime={engine.currentTime}
+            trackColors={trackColors}
+            mutedTracks={mutedTracks}
+            soloedTrack={soloedTrack}
           />
         </section>
       </main>
