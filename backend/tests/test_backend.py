@@ -38,6 +38,23 @@ class TestRegression:
         r = client.put(f"{API}/settings", json={"theme": "neon-pink"}, timeout=30)
         assert r.status_code == 200
 
+    def test_settings_convert_mode_default(self, client):
+        r = client.get(f"{API}/settings", timeout=30)
+        assert r.status_code == 200
+        data = r.json()
+        assert "convert_mode" in data, f"convert_mode missing from settings: {list(data.keys())}"
+        assert data["convert_mode"] in ("single", "multi")
+
+    def test_settings_convert_mode_persist(self, client):
+        # Set to multi
+        r = client.put(f"{API}/settings", json={"convert_mode": "multi"}, timeout=30)
+        assert r.status_code == 200
+        # Verify persisted
+        g = client.get(f"{API}/settings", timeout=30)
+        assert g.json().get("convert_mode") == "multi"
+        # Restore default
+        client.put(f"{API}/settings", json={"convert_mode": "single"}, timeout=30)
+
     def test_song_create_delete(self, client):
         payload = {
             "name": "TEST_regression_song",
@@ -110,14 +127,46 @@ class TestSheetToMidi:
             assert data["page_count"] >= 1
             assert data["duration"] > 0
             assert isinstance(data["notes"], list) and len(data["notes"]) > 0
+            # Iteration 14: chords array must be present
+            assert "chords" in data, "response missing chords array"
+            assert isinstance(data["chords"], list)
+            # Iteration 14 target: note count should be >= previous iteration_13 (97)
+            print(f"NOTE_COUNT={len(data['notes'])} CHORDS={len(data['chords'])}")
+            assert "tempo_bpm" in data
+            assert "time_signature" in data
+            assert "key_signature" in data
             assert "tracks" in data
             for n in data["notes"]:
                 assert 21 <= n["midi"] <= 108
                 assert "time" in n and "duration" in n and "velocity" in n
                 assert n["hand"] in ("left", "right")
-            # Verify hand tagging heuristic: notes with midi<60 should generally be 'left'
-            # (LLM decides; check at least most notes below 60 are left)
-            low = [n for n in data["notes"] if n["midi"] < 60]
-            if low:
-                lefts = sum(1 for n in low if n["hand"] == "left")
-                assert lefts >= len(low) * 0.5
+            # Left-hand majority MIDI<60 (middle C is a valid crossover)
+            lefts = [n for n in data["notes"] if n["hand"] == "left"]
+            left_low = sum(1 for n in lefts if n["midi"] < 60)
+            if lefts:
+                assert left_low >= len(lefts) * 0.8, f"only {left_low}/{len(lefts)} left-hand notes are midi<60"
+            # Right-hand majority
+            rights = [n for n in data["notes"] if n["hand"] == "right"]
+            right_high = sum(1 for n in rights if n["midi"] >= 60)
+            if rights:
+                assert right_high >= len(rights) * 0.6
+
+    def test_png_image_preprocessing(self, client):
+        """Verify PNG input path (autocontrast + sharpness preprocessing) runs OK."""
+        from PIL import Image, ImageDraw
+        img = Image.new("RGB", (800, 400), "white")
+        d = ImageDraw.Draw(img)
+        # Simple treble+bass staff lines
+        for y in [80, 100, 120, 140, 160]:
+            d.line([(50, y), (750, y)], fill="black", width=2)
+        for y in [240, 260, 280, 300, 320]:
+            d.line([(50, y), (750, y)], fill="black", width=2)
+        # A couple of noteheads
+        for cx in [150, 250, 350, 450]:
+            d.ellipse([cx-10, 110, cx+10, 128], fill="black")
+            d.ellipse([cx-10, 270, cx+10, 288], fill="black")
+        buf = io.BytesIO(); img.save(buf, format="PNG")
+        files = {"file": ("simple.png", buf.getvalue(), "image/png")}
+        r = client.post(f"{API}/sheet-to-midi", files=files, timeout=180)
+        # Accept 200 or 422 (LLM may or may not extract from synthetic staff)
+        assert r.status_code in (200, 422), f"unexpected {r.status_code}: {r.text[:200]}"

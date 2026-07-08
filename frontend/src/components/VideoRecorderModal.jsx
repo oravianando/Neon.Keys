@@ -74,6 +74,11 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
   const activeReleasesRef = useRef([]);
   const particlesRef = useRef([]);
   const timeRef = useRef(0);
+  // Preview loop refs (particles need to persist across preview frames)
+  const previewParticlesRef = useRef([]);
+  const previewPrevActiveRef = useRef(new Set());
+  // Editable video title (defaults to AI title or song name)
+  const [videoTitle, setVideoTitle] = useState("");
 
   useEffect(() => {
     if (!open) {
@@ -99,6 +104,13 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
 
   const chosen = VFX_PRESETS.find((p) => p.id === preset) || VFX_PRESETS[0];
 
+  // Sync default title with song or AI-generated title
+  useEffect(() => {
+    if (aiTitle) setVideoTitle(aiTitle);
+    else if (song?.name && !videoTitle) setVideoTitle(song.name);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [aiTitle, song?.id]);
+
   // Preview render loop (idle mode)
   useEffect(() => {
     if (!open) return;
@@ -112,27 +124,49 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
 
     let previewT = 0;
     const previewActive = new Map();
-    // Cycle a few demo keys for preview
+    previewParticlesRef.current = [];
+    previewPrevActiveRef.current = new Set();
+
     const previewLoop = () => {
       if (state === "recording") return;
       previewT += 1 / 60;
       previewActive.clear();
+      const cycleDur = song?.duration || 4;
+      const localT = previewT % cycleDur;
       if (song?.notes) {
         for (const n of song.notes) {
-          if (n.time <= (previewT % (song.duration || 4)) && (previewT % (song.duration || 4)) < n.time + n.duration) {
-            previewActive.set(n.midi, { hand: n.hand || (n.midi < 60 ? "left" : "right"), track: n.track !== undefined ? String(n.track) : "0" });
+          if (n.time <= localT && localT < n.time + n.duration) {
+            previewActive.set(n.midi, {
+              hand: n.hand || (n.midi < 60 ? "left" : "right"),
+              track: n.track !== undefined ? String(n.track) : "0",
+            });
           }
         }
       } else {
         [60, 64, 67, 72].forEach((m) => (previewT % 2 < 1 ? previewActive.set(m, { hand: "right", track: "0" }) : null));
       }
-      renderFrame(ctx, chosen, previewT, previewT % (song?.duration || 4), song, previewActive, [], null, dims);
+
+      // Spawn particles when a key transitions from inactive → active
+      const prev = previewPrevActiveRef.current;
+      for (const [midi, meta] of previewActive) {
+        if (!prev.has(midi)) {
+          const xFrac = keyXFractionCanvas(midi);
+          const px = xFrac * dims.w;
+          const py = dims.notesH;
+          const tc = trackColors?.[meta.track];
+          spawnParticles(previewParticlesRef.current, px, py, chosen.particle, tc || chosen.palette[0]);
+        }
+      }
+      previewPrevActiveRef.current = new Set(previewActive.keys());
+      updateParticles(previewParticlesRef.current);
+
+      renderFrame(ctx, chosen, previewT, localT, song, previewActive, previewParticlesRef.current, null, dims);
       if (state !== "recording") rafRef.current = requestAnimationFrame(previewLoop);
     };
     rafRef.current = requestAnimationFrame(previewLoop);
     return () => cancelAnimationFrame(rafRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [open, preset, song?.id, resolutionId]);
+  }, [open, preset, song?.id, resolutionId, trackColors]);
 
   const startRecording = async () => {
     if (!song || !song.notes?.length) {
@@ -167,7 +201,7 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
     playStartRef.current = performance.now() / 1000;
 
     recorder.start();
-    const useIntro = showTitleCard && (aiTitle || song.name);
+    const useIntro = showTitleCard && (videoTitle || song.name);
     const introDur = useIntro ? INTRO_DURATION : 0;
     const duration = introDur + song.duration + 1;
 
@@ -216,7 +250,7 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
         introDur,
         elapsed,
         songTime,
-        title: aiTitle || song.name,
+        title: videoTitle || song.name,
         tagline: aiTagline,
         showSubtitles,
         chords: song.chords || [],
@@ -255,7 +289,8 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
     if (!videoUrl) return;
     const a = document.createElement("a");
     a.href = videoUrl;
-    a.download = `${(song?.name || "piano").replace(/\W+/g, "_")}.${videoExt}`;
+    const nameForFile = (videoTitle || song?.name || "piano").replace(/\W+/g, "_");
+    a.download = `${nameForFile}.${videoExt}`;
     a.click();
   };
 
@@ -342,13 +377,29 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
               <Wand2 size={12} className={aiEnhancing ? "animate-spin" : ""} />
               {aiEnhancing ? "Thinking…" : "AI Suggest"}
             </button>
-            {aiTitle && (
-              <div className="flex items-center gap-2 border-l border-white/10 pl-3 text-xs" data-testid="ai-title-preview">
-                <span className="text-white/40 uppercase tracking-widest text-[9px]">Title</span>
-                <span className="font-heading font-bold neon-cyan">{aiTitle}</span>
-                {aiTagline && <span className="text-white/50 italic">— {aiTagline}</span>}
-              </div>
+            {aiTagline && (
+              <span
+                className="text-white/50 italic text-xs border-l border-white/10 pl-3"
+                data-testid="ai-tagline-preview"
+                title={aiTagline}
+              >
+                — {aiTagline}
+              </span>
             )}
+            <div className="flex items-center gap-2 border-l border-white/10 pl-3 flex-1 min-w-[200px]" data-testid="video-title-field">
+              <span className="text-white/40 uppercase tracking-widest text-[9px] whitespace-nowrap">Title</span>
+              <input
+                type="text"
+                value={videoTitle}
+                onChange={(e) => setVideoTitle(e.target.value)}
+                disabled={state === "recording"}
+                placeholder={song?.name || "Video title"}
+                maxLength={60}
+                className="flex-1 min-w-0 bg-transparent border-b border-white/15 focus:border-[#00F0FF] focus:outline-none px-1 py-1 text-sm font-heading font-bold neon-cyan placeholder:text-white/25 placeholder:font-normal placeholder:italic disabled:opacity-40 transition-colors"
+                data-testid="video-title-input"
+                aria-label="Video title"
+              />
+            </div>
             <div className="ml-auto flex items-center gap-4">
               <label className="flex items-center gap-2 text-[10px] uppercase tracking-wider text-white/60">
                 <Switch

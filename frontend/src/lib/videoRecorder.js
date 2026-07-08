@@ -3,13 +3,23 @@ import * as Tone from "tone";
 /*
   createVideoRecorder(canvas, options) → recorder
     - canvas: HTMLCanvasElement to capture
-    - options: { fps, mimeType }
-  Returns: { start(), stop() → Promise<Blob> }
+    - options:
+        fps: number (default 30)
+        bitrate: number (target average bits per second; also acts as peak for CBR)
+        bitrateMode: "constant" | "variable" (default "constant")
+          → "variable" enables VBR encoding (smaller files for scenes with flat colors,
+             larger for busy scenes). Passed as a hint to MediaRecorder — browsers that
+             ignore the hint still benefit from a reduced average target bitrate.
+        mimeType: optional preferred mime type
+  Returns: { start(), stop() → Promise<Blob>, mimeType, fileExtension }
 
   Also captures Tone.js audio destination as an audio track so the produced
   video contains synced piano audio.
 */
-export function createVideoRecorder(canvas, { fps = 30, bitrate = 5_000_000 } = {}) {
+export function createVideoRecorder(
+  canvas,
+  { fps = 30, bitrate = 5_000_000, bitrateMode = "constant" } = {},
+) {
   const videoStream = canvas.captureStream(fps);
 
   // Attach audio from Tone
@@ -39,7 +49,16 @@ export function createVideoRecorder(canvas, { fps = 30, bitrate = 5_000_000 } = 
       break;
     }
   }
-  const rec = new MediaRecorder(videoStream, mimeType ? { mimeType, videoBitsPerSecond: bitrate } : { videoBitsPerSecond: bitrate });
+  // For VBR, target ~60% of the stated bitrate as the average; encoder will spike
+  // higher for busy frames and lower for flat frames. Also pass the non-standard
+  // `bitrateMode: "variable"` hint which Chromium respects.
+  const wantVbr = bitrateMode === "variable";
+  const targetBps = wantVbr ? Math.round(bitrate * 0.6) : bitrate;
+  const recOpts = mimeType
+    ? { mimeType, videoBitsPerSecond: targetBps }
+    : { videoBitsPerSecond: targetBps };
+  if (wantVbr) recOpts.bitrateMode = "variable";
+  const rec = new MediaRecorder(videoStream, recOpts);
   const chunks = [];
   rec.ondataavailable = (e) => e.data && e.data.size > 0 && chunks.push(e.data);
 

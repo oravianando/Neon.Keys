@@ -335,7 +335,7 @@ export default function PianoApp() {
         setUserSongs((prev) => [saved, ...prev]);
         handleSelectSong(saved);
         toast.success(
-          `Sheet imported — ${data.notes.length} notes across ${data.page_count || 1} page(s) (${data.tempo_bpm || 100} BPM, ${data.key_signature || "C"})`,
+          `Sheet imported — ${data.notes.length} notes across ${data.page_count || 1} page(s) • ${data.chords?.length || 0} chords • ${data.tempo_bpm || 100} BPM • ${data.key_signature || "C"}`,
         );
       } catch (err) {
         console.error("Sheet-to-MIDI failed", err);
