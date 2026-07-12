@@ -135,18 +135,49 @@ export function usePianoEngine({
       noteIdxRef.current++;
     }
 
-    activeReleasesRef.current = activeReleasesRef.current.filter((r) => {
-      if (r.endsAt <= elapsed) {
-        setActive(r.midi, false);
-        return false;
+
+
+
+    // activeReleasesRef.current = activeReleasesRef.current.filter((r) => {
+    //   if (r.endsAt <= elapsed) {
+    //     setActive(r.midi, false);
+    //     return false;
+    //   }
+    //   return true;
+    // });
+
+    // if (elapsed >= song.duration) {
+    //   stop();
+    //   return;
+    // }
+
+
+
+
+    if (activeReleasesRef.current.length) {
+      const remaining = [];
+      const finished = [];
+      for (const r of activeReleasesRef.current) {
+        if (r.endsAt <= elapsed) finished.push(r);
+        else remaining.push(r);
       }
-      return true;
-    });
+      if (finished.length) {
+        activeReleasesRef.current = remaining;
+        const stillActiveMidi = new Set(remaining.map((r) => r.midi));
+        for (const r of finished) {
+          if (!stillActiveMidi.has(r.midi)) setActive(r.midi, false);
+        }
+      }
+    }
 
     if (elapsed >= song.duration) {
       stop();
       return;
     }
+
+
+
+
 
     rafRef.current = requestAnimationFrame(tick);
     // eslint-disable-next-line react-hooks/exhaustive-deps
