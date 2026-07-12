@@ -2,7 +2,7 @@
 
 <div align="center">
 
-![Home Screen](images/01-home.png)
+![Home Screen](docs/images/01-home.png)
 
 **A full-stack, AI-powered piano learning app that turns any audio, MIDI file, or sheet-music PDF into an interactive practice experience — then lets you export shareable 4K videos with 20 built-in VFX presets.**
 
@@ -24,12 +24,12 @@ NEON.KEYS is a browser-based piano platform that combines three studio tools in 
 
 | Document | Purpose |
 |----------|---------|
-| [ARCHITECTURE.md](ARCHITECTURE.md) | System diagram, tech stack, data flow |
-| [BACKEND.md](BACKEND.md) | FastAPI routes, MongoDB models, AI integrations |
-| [FRONTEND.md](FRONTEND.md) | React component tree, hooks, canvas rendering |
-| [FEATURES.md](FEATURES.md) | Complete feature list with screenshots |
-| [USER_GUIDE.md](USER_GUIDE.md) | Step-by-step walkthroughs for every workflow |
-| [API.md](API.md) | REST endpoint reference with request/response shapes |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | System diagram, tech stack, data flow |
+| [BACKEND.md](docs/BACKEND.md) | FastAPI routes, MongoDB models, AI integrations |
+| [FRONTEND.md](docs/FRONTEND.md) | React component tree, hooks, canvas rendering |
+| [FEATURES.md](docs/FEATURES.md) | Complete feature list with screenshots |
+| [USER_GUIDE.md](docs/USER_GUIDE.md) | Step-by-step walkthroughs for every workflow |
+| [API.md](docs/API.md) | REST endpoint reference with request/response shapes |
 
 ## Quick Facts
 
