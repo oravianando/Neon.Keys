@@ -313,14 +313,34 @@ export default function VideoRecorderModal({ open, onOpenChange, song, sampler, 
           noteIdxRef.current++;
         }
       }
+
+
+
       // Release
-      activeReleasesRef.current = activeReleasesRef.current.filter((r) => {
-        if (r.endsAt <= songTime) {
-          activeKeysRef.current.delete(r.midi);
-          return false;
+      // activeReleasesRef.current = activeReleasesRef.current.filter((r) => {
+      //   if (r.endsAt <= songTime) {
+      //     activeKeysRef.current.delete(r.midi);
+      //     return false;
+      //   }
+      //   return true;
+      // });
+
+
+      if (activeReleasesRef.current.length) {
+        const remaining = [];
+        const finished = [];
+        for (const r of activeReleasesRef.current) {
+          if (r.endsAt <= songTime) finished.push(r);
+          else remaining.push(r);
         }
-        return true;
-      });
+        if (finished.length) {
+          activeReleasesRef.current = remaining;
+          const stillHeld = new Set(remaining.map((r) => r.midi));
+          for (const r of finished) {
+            if (!stillHeld.has(r.midi)) activeKeysRef.current.delete(r.midi);
+          }
+        }
+      }
 
       updateParticles(particlesRef.current);
       const overlay = {
