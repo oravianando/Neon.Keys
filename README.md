@@ -44,11 +44,11 @@ NEON.KEYS is a browser-based piano platform that combines three studio tools in 
 
 | Song loaded — rolling notes | Video recorder with VFX preset |
 |:---:|:---:|
-| ![Song](images/02-song-loaded.png) | ![Video](images/04-video-recorder.png) |
+| ![Song](docs/images/02-song-loaded.png) | ![Video](images/04-video-recorder.png) |
 
 | Rainbow-flow VFX | Settings panel |
 |:---:|:---:|
-| ![Rainbow](images/05-rainbow-vfx.png) | ![Settings](images/06-settings.png) |
+| ![Rainbow](docs/images/05-rainbow-vfx.png) | ![Settings](images/06-settings.png) |
 
 </div>
 
